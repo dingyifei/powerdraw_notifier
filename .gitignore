@@ -31,6 +31,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!PowerMonitor.spec
 
 # Installer logs
 pip-log.txt
@@ -205,3 +206,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Power Monitor specific
+data/*.db
+data/*.db-journal
+data/logs/*.log
+data/power_curve_*.png
+.claude/
