@@ -36,8 +36,8 @@ class StatsWindow(tk.Toplevel):
         self.geometry("400x400")
         self.resizable(False, False)
 
-        # Center on parent
-        self._center_on_parent(parent)
+        # Center on screen
+        self._center_on_screen()
 
         # Setup UI
         self._setup_ui()
@@ -48,26 +48,25 @@ class StatsWindow(tk.Toplevel):
         # Handle window close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
-    def _center_on_parent(self, parent):
-        """Center this window on the parent window."""
+    def _center_on_screen(self):
+        """Center this window on the screen."""
         self.update_idletasks()
 
-        # Get parent position and size
-        parent_x = parent.winfo_x()
-        parent_y = parent.winfo_y()
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
 
-        # Get this window size
+        # Window dimensions
         window_width = 400
         window_height = 400
 
         # Calculate center position
-        x = parent_x + (parent_width - window_width) // 2
-        y = parent_y + (parent_height - window_height) // 2
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
 
         # Set position
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.logger.debug(f"StatsWindow centered at ({x}, {y})")
 
     def _setup_ui(self):
         """Setup the user interface."""

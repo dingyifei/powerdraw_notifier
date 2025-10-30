@@ -42,6 +42,9 @@ class PlotWindow(tk.Toplevel):
         self.geometry("1000x800")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # Center window on screen
+        self._center_on_screen()
+
         logger.info("PlotWindow initialized")
 
         # Build the UI
@@ -49,6 +52,26 @@ class PlotWindow(tk.Toplevel):
 
         # Load initial plot
         self._refresh_plot()
+
+    def _center_on_screen(self):
+        """Center the window on the screen."""
+        self.update_idletasks()
+
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Window dimensions
+        window_width = 1000
+        window_height = 800
+
+        # Calculate center position
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        # Set position
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        logger.debug(f"PlotWindow centered at ({x}, {y})")
 
     def _create_widgets(self):
         """Create and layout all UI widgets"""

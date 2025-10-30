@@ -224,10 +224,25 @@ powerdraw_notifier/
 - **StatsWindow**: Real-time stats display with auto-refresh
 - **PlotWindow**: Embedded matplotlib with toolbar and controls
 
-#### 8. **Main Application** (main.py)
+#### 8. **SyncthingClient** (syncthing_client.py)
+- REST API client for Syncthing integration
+- Thread-safe operations with automatic error handling
+- Methods:
+  - `get_device_id()` - Retrieve local device ID
+  - `is_paused()` - Check current pause state
+  - `pause_device()` - Pause local device sync
+  - `resume_device()` - Resume local device sync
+  - `test_connection()` - Validate API key and connectivity
+  - `get_status_text()` - Get human-readable status for UI
+- Uses requests library with 5-second timeout
+- Custom exceptions: `SyncthingError`, `SyncthingConnectionError`, `SyncthingAPIError`
+- Connects to localhost:8384 by default
+
+#### 9. **Main Application** (main.py)
 - System tray icon with pystray
-- Menu: Stats, Plots, Settings, Logs, About, Quit
+- Menu: Stats, Plots, Syncthing (optional), Settings, Logs, About, Quit
 - Dynamic icon switching (normal ↔ alert)
+- Dynamic Syncthing menu item showing current status
 - Graceful shutdown handling
 - Signal handlers for SIGINT/SIGTERM
 
@@ -246,6 +261,8 @@ All settings are stored in `config.json`:
 | `log_level` | str | INFO | DEBUG, INFO, WARNING, ERROR, CRITICAL | Logging verbosity |
 | `enable_notifications` | bool | true | - | Enable/disable all notifications |
 | `auto_start_monitoring` | bool | true | - | Start monitoring on app launch |
+| `syncthing_enabled` | bool | false | - | Enable Syncthing integration |
+| `syncthing_api_key` | str | "" | - | Syncthing REST API key |
 
 ## Database Schema
 
@@ -296,6 +313,26 @@ power_draw = (battery_prev - battery_now) / hours_elapsed
 # Returns: percentage per hour
 # Only calculated when on battery power (not plugged in)
 ```
+
+### High DPI Display Support
+The application automatically detects and configures for high DPI displays on Windows:
+
+**DPI Awareness:**
+- Enables per-monitor DPI awareness v2 on Windows 10+ for crisp rendering
+- Falls back to per-monitor DPI awareness v1 on Windows 8.1
+- Falls back to system DPI awareness on Windows Vista/7
+- Called before any tkinter windows are created
+
+**Tkinter Scaling:**
+- Automatically detects system DPI (default: 96 DPI = 100% scaling)
+- Applies appropriate scaling factor to all tkinter windows
+- Scaling factor = (System DPI / 96) × 1.33
+- Logged at application startup for debugging
+
+**Benefits:**
+- Text and UI elements render sharply on high DPI monitors
+- Proper ClearType font rendering on Windows
+- Consistent sizing across different DPI settings
 
 ### Cross-Platform Considerations
 
@@ -382,6 +419,7 @@ power_draw = (battery_prev - battery_now) / hours_elapsed
 - **Pillow (PIL)**: Image handling and icon generation
 - **matplotlib**: Data visualization
 - **pandas**: Data manipulation for plotting
+- **requests**: HTTP client for Syncthing API integration
 
 ### Development Dependencies
 - **pyinstaller**: Executable packaging

@@ -28,11 +28,41 @@ from power_monitor.logger import setup_logging
 from power_monitor.monitor import PowerMonitor
 from power_monitor.notifier import PowerNotifier
 from power_monitor.plotter import PowerPlotter
+from power_monitor.syncthing_client import SyncthingClient, SyncthingError
 
 # Import UI components
 from power_monitor.ui.plot_window import PlotWindow
 from power_monitor.ui.settings_window import SettingsWindow
 from power_monitor.ui.stats_window import StatsWindow
+
+
+# Enable DPI awareness for better display on high DPI monitors
+def enable_dpi_awareness():
+    """Enable DPI awareness for crisp UI on high DPI displays."""
+    try:
+        if platform.system() == "Windows":
+            # Try to set DPI awareness (Windows 8.1+)
+            import ctypes
+
+            try:
+                # Try Windows 10 method first (per-monitor DPI awareness v2)
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                try:
+                    # Fallback to Windows 8.1 method (per-monitor DPI awareness v1)
+                    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+                except Exception:
+                    try:
+                        # Fallback to Windows Vista/7 method (system DPI awareness)
+                        ctypes.windll.user32.SetProcessDPIAware()
+                    except Exception:
+                        pass  # DPI awareness not available
+    except Exception:
+        pass  # Silently fail if not supported
+
+
+# Call before creating any windows
+enable_dpi_awareness()
 
 
 class PowerMonitorApp:
@@ -58,6 +88,19 @@ class PowerMonitorApp:
         self.notifier = PowerNotifier(self.config)
         self.plotter = PowerPlotter(self.database)
 
+        # Initialize Syncthing client if enabled
+        self.syncthing_client: Optional[SyncthingClient] = None
+        if self.config.get("syncthing_enabled", False):
+            api_key = self.config.get("syncthing_api_key", "")
+            if api_key:
+                try:
+                    self.syncthing_client = SyncthingClient(api_key)
+                    self.logger.info("Syncthing client initialized")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Syncthing client: {e}", exc_info=True)
+            else:
+                self.logger.warning("Syncthing enabled but no API key provided")
+
         # Threading control
         self.shutdown_event = threading.Event()
         self.analysis_thread = None
@@ -71,8 +114,8 @@ class PowerMonitorApp:
         self.root = tk.Tk()
         self.root.withdraw()  # Hide the root window
 
-        # Start Tkinter event loop processing
-        self._process_tk_events()
+        # Configure DPI scaling for tkinter
+        self._configure_tkinter_scaling()
 
         # System tray icon
         self.icon = None
@@ -94,19 +137,41 @@ class PowerMonitorApp:
         self.logger.info(f"Received signal {signum}, shutting down...")
         self.shutdown()
 
-    def _process_tk_events(self):
-        """Process Tkinter events to keep the GUI responsive."""
+    def _configure_tkinter_scaling(self):
+        """Configure tkinter scaling for high DPI displays."""
         try:
-            self.root.update()
-        except tk.TclError:
-            # Root window was destroyed
-            return
-        except Exception as e:
-            self.logger.error(f"Error processing Tkinter events: {e}")
+            if platform.system() == "Windows":
+                import ctypes
 
-        # Schedule next event processing (every 100ms)
-        if not self.shutdown_event.is_set():
-            self.root.after(100, self._process_tk_events)
+                # Get the DPI of the primary monitor
+                try:
+                    # Windows 8.1+ method
+                    user32 = ctypes.windll.user32
+                    user32.SetProcessDPIAware()
+                    dpi = user32.GetDpiForSystem()
+                except Exception:
+                    try:
+                        # Fallback method
+                        hdc = ctypes.windll.user32.GetDC(0)
+                        dpi = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+                        ctypes.windll.user32.ReleaseDC(0, hdc)
+                    except Exception:
+                        dpi = 96  # Default DPI
+
+                # Calculate scaling factor (96 DPI is 100% scaling)
+                scale_factor = dpi / 96.0
+
+                # Apply scaling to tkinter if not at 100%
+                if scale_factor != 1.0:
+                    self.root.tk.call("tk", "scaling", scale_factor * 1.33)
+                    self.logger.info(
+                        f"DPI scaling configured: {dpi} DPI ({scale_factor * 100:.0f}% scaling)"
+                    )
+                else:
+                    self.logger.info("DPI scaling: 96 DPI (100% scaling)")
+
+        except Exception as e:
+            self.logger.warning(f"Could not configure DPI scaling: {e}")
 
     def _load_icon_image(self, path: Path) -> Optional[Image.Image]:
         """
@@ -243,12 +308,14 @@ class PowerMonitorApp:
                         critical_threshold = self.config.get("critical_battery_percent", 10)
                         low_threshold = self.config.get("low_battery_warning_percent", 20)
 
-                        if battery_percent <= critical_threshold:
-                            if self.config.get("enable_notifications", True):
-                                self.notifier.notify_critical_battery(battery_percent)
-                        elif battery_percent <= low_threshold:
-                            if self.config.get("enable_notifications", True):
-                                self.notifier.notify_low_battery(battery_percent)
+                        if battery_percent <= critical_threshold and self.config.get(
+                            "enable_notifications", True
+                        ):
+                            self.notifier.notify_critical_battery(battery_percent)
+                        elif battery_percent <= low_threshold and self.config.get(
+                            "enable_notifications", True
+                        ):
+                            self.notifier.notify_low_battery(battery_percent)
 
             except Exception as e:
                 self.logger.error(f"Error in high power check: {e}", exc_info=True)
@@ -287,32 +354,152 @@ class PowerMonitorApp:
         """Handle 'Current Stats' menu click."""
         self.logger.debug("Opening Current Stats window")
         try:
-            StatsWindow(self.root, self.monitor)
+            # Ensure UI creation happens on main (Tkinter) thread
+            self.root.after(0, lambda: StatsWindow(self.root, self.monitor))
         except Exception as e:
             self.logger.error(f"Error opening stats window: {e}", exc_info=True)
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to open stats window:\n{str(e)}"))
+            error_msg = str(e)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror("Error", f"Failed to open stats window:\n{error_msg}"),
+            )
 
     def _on_view_power_curve(self, icon, item):
         """Handle 'View Power Curve' menu click."""
         self.logger.debug("Opening Power Curve window")
         try:
-            PlotWindow(self.root, self.plotter)
+            # Ensure UI creation happens on main (Tkinter) thread
+            self.root.after(0, lambda: PlotWindow(self.root, self.plotter))
         except Exception as e:
             self.logger.error(f"Error opening plot window: {e}", exc_info=True)
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to open plot window:\n{str(e)}"))
+            error_msg = str(e)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror("Error", f"Failed to open plot window:\n{error_msg}"),
+            )
+
+    def _get_syncthing_menu_text(self, item):
+        """
+        Get dynamic menu text for Syncthing based on current state.
+
+        Args:
+            item: Menu item (required by pystray)
+
+        Returns:
+            Menu text string
+        """
+        if not self.syncthing_client:
+            return "Syncthing: Unknown"
+
+        try:
+            status = self.syncthing_client.get_status_text()
+            return f"Syncthing: {status}"
+        except Exception:
+            return "Syncthing: Unknown"
+
+    def _on_toggle_syncthing(self, icon, item):
+        """Handle Syncthing pause/resume toggle."""
+        self.logger.debug("Toggling Syncthing sync state")
+
+        if not self.syncthing_client:
+            self.logger.warning("Syncthing client not initialized")
+            self.root.after(
+                0,
+                lambda: messagebox.showwarning(
+                    "Syncthing Not Configured",
+                    "Syncthing integration is not properly configured.\n"
+                    "Please check your settings.",
+                ),
+            )
+            return
+
+        try:
+            # Check current state and toggle
+            is_paused = self.syncthing_client.is_paused()
+
+            if is_paused:
+                self.syncthing_client.resume_device()
+                self.logger.info("Syncthing sync resumed")
+                self.root.after(
+                    0, lambda: messagebox.showinfo("Syncthing", "Syncthing sync has been resumed.")
+                )
+            else:
+                self.syncthing_client.pause_device()
+                self.logger.info("Syncthing sync paused")
+                self.root.after(
+                    0, lambda: messagebox.showinfo("Syncthing", "Syncthing sync has been paused.")
+                )
+
+            # Update menu by recreating it
+            if self.icon:
+                self.icon.menu = self._create_tray_menu()
+
+        except SyncthingError as e:
+            self.logger.error(f"Syncthing error: {e}", exc_info=True)
+            error_msg = str(e)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror(
+                    "Syncthing Error", f"Failed to toggle Syncthing:\n\n{error_msg}"
+                ),
+            )
+        except Exception as e:
+            self.logger.error(f"Unexpected error toggling Syncthing: {e}", exc_info=True)
+            error_msg = str(e)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror(
+                    "Error", f"An unexpected error occurred:\n\n{error_msg}"
+                ),
+            )
 
     def _on_settings(self, icon, item):
         """Handle 'Settings' menu click."""
         self.logger.debug("Opening Settings window")
         try:
-            SettingsWindow(self.root, self.config, on_save_callback=self._on_settings_saved)
+            # Ensure UI creation happens on main (Tkinter) thread
+            self.root.after(
+                0,
+                lambda: SettingsWindow(
+                    self.root, self.config, on_save_callback=self._on_settings_saved
+                ),
+            )
         except Exception as e:
             self.logger.error(f"Error opening settings window: {e}", exc_info=True)
-            self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to open settings window:\n{str(e)}"))
+            error_msg = str(e)
+            self.root.after(
+                0,
+                lambda: messagebox.showerror(
+                    "Error", f"Failed to open settings window:\n{error_msg}"
+                ),
+            )
 
     def _on_settings_saved(self):
         """Callback when settings are saved."""
         self.logger.info("Settings saved, applying changes...")
+
+        # Reinitialize Syncthing client if settings changed
+        if self.config.get("syncthing_enabled", False):
+            api_key = self.config.get("syncthing_api_key", "")
+            if api_key:
+                try:
+                    self.syncthing_client = SyncthingClient(api_key)
+                    self.logger.info("Syncthing client reinitialized")
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to reinitialize Syncthing client: {e}", exc_info=True
+                    )
+                    self.syncthing_client = None
+            else:
+                self.logger.warning("Syncthing enabled but no API key provided")
+                self.syncthing_client = None
+        else:
+            self.syncthing_client = None
+            self.logger.info("Syncthing integration disabled")
+
+        # Update menu to reflect Syncthing changes
+        if self.icon:
+            self.icon.menu = self._create_tray_menu()
 
         # Restart monitoring if it was running to apply new interval
         if self.monitor.running.is_set():
@@ -393,12 +580,17 @@ class PowerMonitorApp:
         if self.icon:
             self.icon.stop()
 
-        # Destroy root window
+        # Destroy root window - use after() to ensure it runs on main thread
         try:
-            self.root.quit()
-            self.root.destroy()
-        except:
-            pass
+            # Check if we're on the main thread
+            if threading.current_thread() is threading.main_thread():
+                # We're on main thread, safe to quit directly
+                self.root.quit()
+            else:
+                # We're on a background thread, schedule quit on main thread
+                self.root.after(0, self.root.quit)
+        except Exception as e:
+            self.logger.error(f"Error quitting Tkinter: {e}")
 
         self.logger.info("Shutdown complete")
 
@@ -409,16 +601,30 @@ class PowerMonitorApp:
         Returns:
             pystray.Menu object
         """
-        return pystray.Menu(
+        menu_items = [
             pystray.MenuItem("Current Stats", self._on_current_stats),
             pystray.MenuItem("View Power Curve", self._on_view_power_curve),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Settings", self._on_settings),
-            pystray.MenuItem("Open Logs Folder", self._on_open_logs_folder),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("About", self._on_about),
-            pystray.MenuItem("Quit", self._on_quit),
+        ]
+
+        # Add Syncthing menu item if enabled
+        if self.config.get("syncthing_enabled", False) and self.syncthing_client:
+            menu_items.append(pystray.Menu.SEPARATOR)
+            menu_items.append(
+                pystray.MenuItem(self._get_syncthing_menu_text, self._on_toggle_syncthing)
+            )
+
+        menu_items.extend(
+            [
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Settings", self._on_settings),
+                pystray.MenuItem("Open Logs Folder", self._on_open_logs_folder),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("About", self._on_about),
+                pystray.MenuItem("Quit", self._on_quit),
+            ]
         )
+
+        return pystray.Menu(*menu_items)
 
     def run(self):
         """Run the application with system tray icon."""
@@ -442,8 +648,26 @@ class PowerMonitorApp:
 
             self.logger.info("Starting system tray icon...")
 
-            # Run icon (this blocks until icon.stop() is called)
-            self.icon.run()
+            # Platform-specific threading model
+            system = platform.system()
+
+            if system in ["Windows", "Linux"]:
+                # On Windows/Linux: run pystray in background thread, Tkinter on main thread
+                self.logger.info(
+                    f"Running on {system}: pystray in background, Tkinter on main thread"
+                )
+                icon_thread = threading.Thread(
+                    target=self.icon.run, daemon=True, name="PystrayThread"
+                )
+                icon_thread.start()
+
+                # Run Tkinter mainloop on main thread (this blocks)
+                self.root.mainloop()
+
+            else:  # macOS
+                # On macOS: pystray must run on main thread
+                self.logger.info("Running on macOS: pystray on main thread")
+                self.icon.run()
 
         except Exception as e:
             self.logger.error(f"Error running application: {e}", exc_info=True)

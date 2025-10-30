@@ -14,6 +14,7 @@ Power Monitor is a comprehensive desktop application that tracks battery power c
 - **Interactive Power Usage Plots**: Visualize power consumption trends with matplotlib-powered charts
 - **Configurable Thresholds and Settings**: Customize monitoring intervals, power thresholds, battery warnings, and notification preferences
 - **Resource Tracking**: Monitor CPU usage, memory consumption, disk I/O, network activity, and top power-consuming processes
+- **Syncthing Integration**: Pause and resume Syncthing sync directly from the system tray menu to conserve battery power
 
 ## Screenshots
 
@@ -220,6 +221,11 @@ Right-click (Windows/Linux) or click (macOS) the system tray icon to access:
   - Battery percentage trends
   - Power draw estimation over time
 
+- **Syncthing: Syncing/Paused** *(optional, if Syncthing integration enabled)*
+  - Toggles Syncthing sync on/off
+  - Shows current sync state in the menu label
+  - Useful for conserving battery power
+
 - **Settings**: Opens configuration dialog
   - Adjust monitoring interval
   - Set power draw thresholds
@@ -262,6 +268,51 @@ Right-click (Windows/Linux) or click (macOS) the system tray icon to access:
 6. Click "Cancel" to discard changes
 
 Settings are saved to `config.json` and take effect immediately. If monitoring is active, it will restart to apply the new monitoring interval.
+
+### Syncthing Integration
+
+Power Monitor can integrate with [Syncthing](https://syncthing.net/) to give you quick control over file synchronization directly from the system tray menu. This is useful for conserving battery power by pausing sync operations when needed.
+
+#### Setup
+
+1. **Get your Syncthing API Key**:
+   - Open Syncthing web UI (typically at `http://localhost:8384`)
+   - Go to **Actions** > **Settings** > **General**
+   - Find the **API Key** field and copy it
+
+2. **Configure Power Monitor**:
+   - Click the system tray icon
+   - Select **Settings**
+   - Scroll to the **Syncthing Integration** section
+   - Check **Enable Syncthing Integration**
+   - Paste your API key into the **Syncthing API Key** field
+   - Click **Test Connection** to verify the connection works
+   - Click **Save**
+
+3. **Usage**:
+   - After configuration, a new menu item will appear: **Syncthing: Syncing** or **Syncthing: Paused**
+   - Click this menu item to toggle between paused and syncing states
+   - The label dynamically updates to show the current status
+
+#### Finding Your Syncthing API Key
+
+The API key is required for Power Monitor to communicate with Syncthing. Here's where to find it:
+
+**Windows/macOS/Linux**:
+1. Ensure Syncthing is running
+2. Open your web browser and navigate to `http://localhost:8384`
+3. Click **Actions** in the top-right corner
+4. Select **Settings**
+5. Go to the **General** tab
+6. The **API Key** is displayed near the top - click the copy icon to copy it
+7. If you don't see the API Key, it will be generated automatically on first run
+
+#### Troubleshooting
+
+- **"Connection Failed" when testing**: Ensure Syncthing is running on `http://localhost:8384`
+- **"Invalid API key" error**: Double-check you copied the entire API key from Syncthing settings
+- **Menu item doesn't appear**: Verify that Syncthing integration is enabled in settings and you've saved the configuration
+- **"Syncthing: Unknown" status**: The application couldn't connect to Syncthing - check that Syncthing is running
 
 ## Architecture
 

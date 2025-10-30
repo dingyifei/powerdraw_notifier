@@ -9,6 +9,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
 
+from power_monitor.syncthing_client import SyncthingClient
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,15 +33,15 @@ class SettingsWindow(tk.Toplevel):
 
         # Window configuration
         self.title("Power Monitor Settings")
-        self.geometry("500x600")
+        self.geometry("550x700")
         self.resizable(False, False)
 
-        # Make window modal
-        self.transient(parent)
+        # Make window modal (grab_set without transient since parent is hidden)
+        # Note: transient() is removed because parent window is withdrawn
         self.grab_set()
 
-        # Center window on parent
-        self._center_on_parent(parent)
+        # Center window on screen
+        self._center_on_screen()
 
         # Initialize widget storage
         self.widgets = {}
@@ -52,23 +54,25 @@ class SettingsWindow(tk.Toplevel):
 
         logger.debug("Settings window initialized")
 
-    def _center_on_parent(self, parent):
-        """Center the window on the parent window."""
+    def _center_on_screen(self):
+        """Center the window on the screen."""
         self.update_idletasks()
 
-        # Get parent position and size
-        parent_x = parent.winfo_x()
-        parent_y = parent.winfo_y()
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
+        # Get screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
 
-        # Calculate position
-        window_width = 500
-        window_height = 600
-        x = parent_x + (parent_width - window_width) // 2
-        y = parent_y + (parent_height - window_height) // 2
+        # Window dimensions
+        window_width = 550
+        window_height = 700
 
+        # Calculate center position
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        # Set position
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        logger.debug(f"SettingsWindow centered at ({x}, {y})")
 
     def _create_widgets(self):
         """Create all UI widgets."""
@@ -79,12 +83,16 @@ class SettingsWindow(tk.Toplevel):
         # Configure grid weights
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=1)
 
         # Create scrollable frame for settings
         canvas = tk.Canvas(main_frame, highlightthickness=0)
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
+
+        # Configure scrollable_frame columns
+        scrollable_frame.columnconfigure(1, weight=1)
 
         scrollable_frame.bind(
             "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
@@ -93,10 +101,21 @@ class SettingsWindow(tk.Toplevel):
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
+        # Bind canvas width to scrollable_frame width to prevent horizontal scroll
+        canvas.bind(
+            "<Configure>",
+            lambda e: canvas.itemconfig(canvas.find_withtag("all")[0], width=e.width),
+        )
+
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
         # Grid layout for canvas and scrollbar
-        canvas.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=2, sticky=(tk.N, tk.S))
-        main_frame.rowconfigure(0, weight=1)
+        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
 
         row = 0
 
@@ -185,6 +204,54 @@ class SettingsWindow(tk.Toplevel):
             "auto_start_monitoring",
             "Automatically start monitoring when application launches",
         )
+
+        # Section Separator
+        ttk.Separator(scrollable_frame, orient="horizontal").grid(
+            row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=15
+        )
+        row += 1
+
+        # Syncthing Integration Section Header
+        section_label = ttk.Label(
+            scrollable_frame, text="Syncthing Integration", font=("", 10, "bold")
+        )
+        section_label.grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(5, 10))
+        row += 1
+
+        # Enable Syncthing
+        row = self._add_checkbox_field(
+            scrollable_frame,
+            row,
+            "Enable Syncthing Integration:",
+            "syncthing_enabled",
+            "Enable pause/resume control for Syncthing via tray menu",
+        )
+
+        # Syncthing API Key
+        row = self._add_password_field(
+            scrollable_frame,
+            row,
+            "Syncthing API Key:",
+            "syncthing_api_key",
+            "API key from Syncthing Settings > General > API Key",
+        )
+
+        # Test Connection Button
+        test_button_frame = ttk.Frame(scrollable_frame)
+        test_button_frame.grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
+
+        ttk.Button(test_button_frame, text="Test Connection", command=self._on_test_syncthing).grid(
+            row=0, column=0
+        )
+
+        ttk.Label(
+            test_button_frame,
+            text="(Verifies API key and connection to Syncthing)",
+            font=("", 8),
+            foreground="gray",
+        ).grid(row=0, column=1, padx=(10, 0))
+
+        row += 1
 
         # Separator
         separator = ttk.Separator(main_frame, orient="horizontal")
@@ -354,6 +421,67 @@ class SettingsWindow(tk.Toplevel):
 
         return row + 2
 
+    def _add_password_field(self, parent, row: int, label: str, key: str, description: str) -> int:
+        """
+        Add a password field (masked entry) to the settings form.
+
+        Args:
+            parent: Parent widget
+            row: Current row number
+            label: Label text
+            key: Configuration key
+            description: Tooltip/description text
+
+        Returns:
+            Next row number
+        """
+        # Label
+        lbl = ttk.Label(parent, text=label)
+        lbl.grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+
+        # Entry with show='*' for password masking
+        entry = ttk.Entry(parent, width=30, show="*")
+        entry.grid(row=row, column=1, sticky=(tk.W, tk.E), padx=5, pady=5)
+
+        # Description
+        desc = ttk.Label(parent, text=description, font=("", 8), foreground="gray")
+        desc.grid(row=row + 1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
+
+        # Store widget
+        self.widgets[key] = entry
+
+        return row + 2
+
+    def _on_test_syncthing(self):
+        """Handle Test Connection button click for Syncthing."""
+        try:
+            # Get API key from widget
+            api_key = self.widgets["syncthing_api_key"].get()
+
+            if not api_key:
+                messagebox.showwarning(
+                    "Missing API Key",
+                    "Please enter a Syncthing API key before testing the connection.",
+                )
+                return
+
+            # Create temporary client and test connection
+            client = SyncthingClient(api_key)
+            success, message = client.test_connection()
+
+            if success:
+                messagebox.showinfo("Connection Successful", message)
+                logger.info("Syncthing connection test successful")
+            else:
+                messagebox.showerror("Connection Failed", message)
+                logger.warning(f"Syncthing connection test failed: {message}")
+
+        except Exception as e:
+            logger.error(f"Error testing Syncthing connection: {e}", exc_info=True)
+            messagebox.showerror(
+                "Test Error", f"An error occurred while testing the connection:\n\n{str(e)}"
+            )
+
     def _load_current_config(self):
         """Load current configuration values into the form."""
         try:
@@ -362,7 +490,7 @@ class SettingsWindow(tk.Toplevel):
             for key, widget in self.widgets.items():
                 value = config.get(key)
 
-                if isinstance(widget, tk.BooleanVar) or isinstance(widget, tk.DoubleVar):
+                if isinstance(widget, (tk.BooleanVar, tk.DoubleVar)):
                     widget.set(value)
                 elif isinstance(widget, ttk.Entry):
                     widget.delete(0, tk.END)
@@ -474,6 +602,10 @@ class SettingsWindow(tk.Toplevel):
         # Checkbox fields
         values["enable_notifications"] = self.widgets["enable_notifications"].get()
         values["auto_start_monitoring"] = self.widgets["auto_start_monitoring"].get()
+
+        # Syncthing fields
+        values["syncthing_enabled"] = self.widgets["syncthing_enabled"].get()
+        values["syncthing_api_key"] = self.widgets["syncthing_api_key"].get()
 
         return values
 

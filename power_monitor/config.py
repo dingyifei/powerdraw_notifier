@@ -23,6 +23,8 @@ class ConfigManager:
         "log_level": "INFO",
         "enable_notifications": True,
         "auto_start_monitoring": True,
+        "syncthing_enabled": False,
+        "syncthing_api_key": "",
     }
 
     VALID_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -138,6 +140,13 @@ class ConfigManager:
 
         if not isinstance(config.get("auto_start_monitoring"), bool):
             config["auto_start_monitoring"] = True
+
+        # Validate Syncthing settings
+        if not isinstance(config.get("syncthing_enabled"), bool):
+            config["syncthing_enabled"] = False
+
+        if not isinstance(config.get("syncthing_api_key"), str):
+            config["syncthing_api_key"] = ""
 
         return config
 

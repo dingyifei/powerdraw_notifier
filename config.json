@@ -1,11 +1,13 @@
 {
-  "monitoring_interval_seconds": 30,
+  "monitoring_interval_seconds": 30.0,
   "high_power_threshold_percent_per_10min": 2.0,
   "low_battery_warning_percent": 20,
   "critical_battery_percent": 10,
-  "notification_cooldown_minutes": 15,
+  "notification_cooldown_minutes": 15.0,
   "data_retention_days": 30,
-  "log_level": "INFO",
+  "log_level": "WARNING",
   "enable_notifications": true,
-  "auto_start_monitoring": true
+  "auto_start_monitoring": true,
+  "syncthing_enabled": false,
+  "syncthing_api_key": ""
 }

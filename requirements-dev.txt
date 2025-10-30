@@ -1,2 +1,3 @@
 pyinstaller>=5.13.0
 ruff>=0.8.0
+requests>=2.31.0
