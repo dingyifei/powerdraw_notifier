@@ -3,16 +3,13 @@ Battery Icon Generator
 Generates normal and alert battery icons for the system tray notification.
 """
 
-from PIL import Image, ImageDraw
 import os
+
+from PIL import Image, ImageDraw
 
 
 def create_battery_icon(
-    filename,
-    size=(64, 64),
-    battery_color="#00AA00",
-    fill_level=0.9,
-    show_alert=False
+    filename, size=(64, 64), battery_color="#00AA00", fill_level=0.9, show_alert=False
 ):
     """
     Create a battery icon with specified parameters.
@@ -25,7 +22,7 @@ def create_battery_icon(
         show_alert: Boolean to show warning symbol
     """
     # Create a new image with transparency
-    img = Image.new('RGBA', size, (0, 0, 0, 0))
+    img = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
     width, height = size
@@ -50,7 +47,7 @@ def create_battery_icon(
         [terminal_x, terminal_y, terminal_x + terminal_width, terminal_y + terminal_height],
         radius=2,
         fill=battery_color,
-        outline=battery_color
+        outline=battery_color,
     )
 
     # Draw battery body outline
@@ -60,7 +57,7 @@ def create_battery_icon(
         radius=4,
         fill=None,
         outline=battery_color,
-        width=outline_width
+        width=outline_width,
     )
 
     # Draw battery fill level
@@ -78,7 +75,7 @@ def create_battery_icon(
         draw.rounded_rectangle(
             [fill_x, fill_y_start, fill_x + fill_width, fill_y + fill_height],
             radius=2,
-            fill=battery_color
+            fill=battery_color,
         )
 
     # Draw alert symbol if needed
@@ -89,30 +86,24 @@ def create_battery_icon(
 
         # Exclamation mark (!)
         # Top part (line)
-        draw.rectangle(
-            [symbol_x - 2, symbol_y - 10, symbol_x + 2, symbol_y + 2],
-            fill='white'
-        )
+        draw.rectangle([symbol_x - 2, symbol_y - 10, symbol_x + 2, symbol_y + 2], fill="white")
         # Bottom part (dot)
-        draw.ellipse(
-            [symbol_x - 2, symbol_y + 5, symbol_x + 2, symbol_y + 9],
-            fill='white'
-        )
+        draw.ellipse([symbol_x - 2, symbol_y + 5, symbol_x + 2, symbol_y + 9], fill="white")
 
     # Save the icon
-    img.save(filename, 'PNG')
+    img.save(filename, "PNG")
     print(f"Created: {filename}")
 
 
 def main():
     """Generate both battery icons."""
     # Ensure assets directory exists
-    assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+    assets_dir = os.path.join(os.path.dirname(__file__), "assets")
     os.makedirs(assets_dir, exist_ok=True)
 
     # Icon paths
-    normal_icon_path = os.path.join(assets_dir, 'icon.png')
-    alert_icon_path = os.path.join(assets_dir, 'icon_alert.png')
+    normal_icon_path = os.path.join(assets_dir, "icon.png")
+    alert_icon_path = os.path.join(assets_dir, "icon_alert.png")
 
     print("Generating battery icons...")
     print("-" * 50)
@@ -123,7 +114,7 @@ def main():
         size=(64, 64),
         battery_color="#00AA00",
         fill_level=0.9,
-        show_alert=False
+        show_alert=False,
     )
 
     # Generate alert battery icon (red, 15% full, with warning)
@@ -132,12 +123,12 @@ def main():
         size=(64, 64),
         battery_color="#DD0000",
         fill_level=0.15,
-        show_alert=True
+        show_alert=True,
     )
 
     print("-" * 50)
     print("Icon generation complete!")
-    print(f"\nGenerated files:")
+    print("\nGenerated files:")
     print(f"  - {os.path.abspath(normal_icon_path)}")
     print(f"  - {os.path.abspath(alert_icon_path)}")
 

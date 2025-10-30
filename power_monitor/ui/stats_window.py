@@ -5,9 +5,9 @@ Displays real-time system metrics in a tkinter window including battery status,
 power draw, CPU usage, memory usage, top process, network I/O, and disk I/O.
 """
 
+import logging
 import tkinter as tk
 from tkinter import ttk
-import logging
 
 
 class StatsWindow(tk.Toplevel):
@@ -81,8 +81,8 @@ class StatsWindow(tk.Toplevel):
         main_frame.columnconfigure(1, weight=1)
 
         # Font styles
-        label_font = ('Arial', 10, 'bold')
-        value_font = ('Arial', 10)
+        label_font = ("Arial", 10, "bold")
+        value_font = ("Arial", 10)
 
         # Create label-value pairs
         row = 0
@@ -144,28 +144,20 @@ class StatsWindow(tk.Toplevel):
         row += 1
 
         # Add some spacing
-        ttk.Separator(main_frame, orient='horizontal').grid(
+        ttk.Separator(main_frame, orient="horizontal").grid(
             row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=15
         )
         row += 1
 
         # Last updated label
         self.last_updated_label = ttk.Label(
-            main_frame,
-            text="Last updated: Never",
-            font=('Arial', 8, 'italic')
+            main_frame, text="Last updated: Never", font=("Arial", 8, "italic")
         )
-        self.last_updated_label.grid(
-            row=row, column=0, columnspan=2, sticky=tk.W, pady=(0, 10)
-        )
+        self.last_updated_label.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
         row += 1
 
         # Close button
-        close_button = ttk.Button(
-            main_frame,
-            text="Close",
-            command=self._on_close
-        )
+        close_button = ttk.Button(main_frame, text="Close", command=self._on_close)
         close_button.grid(row=row, column=0, columnspan=2, pady=(10, 0))
 
     def _refresh_stats(self):
@@ -179,8 +171,8 @@ class StatsWindow(tk.Toplevel):
                 return
 
             # Update battery display
-            battery_percent = stats.get('battery_percent')
-            power_plugged = stats.get('power_plugged')
+            battery_percent = stats.get("battery_percent")
+            power_plugged = stats.get("power_plugged")
 
             if battery_percent is not None:
                 status = "Plugged In" if power_plugged else "On Battery"
@@ -189,29 +181,29 @@ class StatsWindow(tk.Toplevel):
                 self.battery_label.config(text="No battery")
 
             # Update power draw
-            power_draw = stats.get('power_draw_estimate')
+            power_draw = stats.get("power_draw_estimate")
             if power_draw is not None:
                 self.power_draw_label.config(text=f"{power_draw}% per hour")
             else:
                 self.power_draw_label.config(text="No data")
 
             # Update CPU usage
-            cpu_percent = stats.get('cpu_percent')
+            cpu_percent = stats.get("cpu_percent")
             if cpu_percent is not None:
                 self.cpu_label.config(text=f"{cpu_percent}%")
             else:
                 self.cpu_label.config(text="N/A")
 
             # Update memory usage
-            memory_percent = stats.get('memory_percent')
+            memory_percent = stats.get("memory_percent")
             if memory_percent is not None:
                 self.memory_label.config(text=f"{memory_percent}%")
             else:
                 self.memory_label.config(text="N/A")
 
             # Update top process
-            top_process_name = stats.get('top_process_name')
-            top_process_cpu = stats.get('top_process_cpu')
+            top_process_name = stats.get("top_process_name")
+            top_process_cpu = stats.get("top_process_cpu")
 
             if top_process_name and top_process_cpu is not None:
                 self.top_process_label.config(text=f"{top_process_name} ({top_process_cpu}% CPU)")
@@ -219,8 +211,8 @@ class StatsWindow(tk.Toplevel):
                 self.top_process_label.config(text="N/A")
 
             # Update network
-            network_sent = stats.get('network_sent_mb')
-            network_recv = stats.get('network_recv_mb')
+            network_sent = stats.get("network_sent_mb")
+            network_recv = stats.get("network_recv_mb")
 
             if network_sent is not None and network_recv is not None:
                 self.network_label.config(text=f"{network_sent} MB/s up, {network_recv} MB/s down")
@@ -228,8 +220,8 @@ class StatsWindow(tk.Toplevel):
                 self.network_label.config(text="N/A")
 
             # Update disk
-            disk_read = stats.get('disk_read_mb')
-            disk_write = stats.get('disk_write_mb')
+            disk_read = stats.get("disk_read_mb")
+            disk_write = stats.get("disk_write_mb")
 
             if disk_read is not None and disk_write is not None:
                 self.disk_label.config(text=f"{disk_read} MB/s read, {disk_write} MB/s write")
@@ -238,6 +230,7 @@ class StatsWindow(tk.Toplevel):
 
             # Update last updated timestamp
             import datetime
+
             now = datetime.datetime.now().strftime("%H:%M:%S")
             self.last_updated_label.config(text=f"Last updated: {now}")
 
@@ -260,6 +253,7 @@ class StatsWindow(tk.Toplevel):
         self.disk_label.config(text="No data")
 
         import datetime
+
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.last_updated_label.config(text=f"Last updated: {now} (No data)")
 
@@ -274,6 +268,7 @@ class StatsWindow(tk.Toplevel):
         self.disk_label.config(text="Error")
 
         import datetime
+
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.last_updated_label.config(text=f"Last updated: {now} (Error)")
 

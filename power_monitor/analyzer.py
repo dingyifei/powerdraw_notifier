@@ -6,8 +6,7 @@ and identifies the root causes of elevated power draw.
 """
 
 import logging
-import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 
 class PowerAnalyzer:
@@ -70,7 +69,7 @@ class PowerAnalyzer:
                 return self._empty_analysis()
 
             # Get power draw
-            power_draw = metrics.get('power_draw_estimate', 0.0)
+            power_draw = metrics.get("power_draw_estimate", 0.0)
 
             # Check if power draw is high
             is_high = self.is_high_power_draw(power_draw)
@@ -90,19 +89,17 @@ class PowerAnalyzer:
 
             # Generate recommendations
             recommendations = self._generate_recommendations(
-                primary_cause,
-                contributing_factors,
-                metrics
+                primary_cause, contributing_factors, metrics
             )
 
             analysis = {
-                'is_high_power': is_high,
-                'primary_cause': primary_cause,
-                'contributing_factors': contributing_factors,
-                'top_processes': top_processes,
-                'confidence': confidence,
-                'power_draw': round(power_draw, 2),
-                'recommendations': recommendations
+                "is_high_power": is_high,
+                "primary_cause": primary_cause,
+                "contributing_factors": contributing_factors,
+                "top_processes": top_processes,
+                "confidence": confidence,
+                "power_draw": round(power_draw, 2),
+                "recommendations": recommendations,
             }
 
             self.logger.debug(
@@ -138,9 +135,8 @@ class PowerAnalyzer:
             if avg_draw is not None:
                 self.logger.debug(f"Rolling average ({minutes}min): {avg_draw:.2f}%/hr")
                 return round(avg_draw, 3)
-            else:
-                self.logger.debug(f"No data available for {minutes} minute rolling average")
-                return None
+            self.logger.debug(f"No data available for {minutes} minute rolling average")
+            return None
 
         except Exception as e:
             self.logger.error(f"Error getting rolling average: {e}", exc_info=True)
@@ -158,10 +154,7 @@ class PowerAnalyzer:
         """
         try:
             # Get threshold from config (percent per 10 minutes)
-            threshold_per_10min = self.config.get(
-                'high_power_threshold_percent_per_10min',
-                2.0
-            )
+            threshold_per_10min = self.config.get("high_power_threshold_percent_per_10min", 2.0)
 
             # Convert to percent per hour for comparison
             threshold_per_hour = threshold_per_10min * 6.0
@@ -236,17 +229,19 @@ class PowerAnalyzer:
 
     def _is_high_cpu(self, metrics: Dict) -> bool:
         """Check if CPU usage indicates high power consumption."""
-        cpu_percent = metrics.get('cpu_percent', 0.0)
-        top_process_cpu = metrics.get('top_process_cpu', 0.0)
+        cpu_percent = metrics.get("cpu_percent", 0.0)
+        top_process_cpu = metrics.get("top_process_cpu", 0.0)
 
         # High if total CPU > 50% OR any single process > 25%
-        return (cpu_percent > self.CPU_HIGH_THRESHOLD or
-                top_process_cpu > self.CPU_SINGLE_PROCESS_THRESHOLD)
+        return (
+            cpu_percent > self.CPU_HIGH_THRESHOLD
+            or top_process_cpu > self.CPU_SINGLE_PROCESS_THRESHOLD
+        )
 
     def _is_high_disk_io(self, metrics: Dict) -> bool:
         """Check if disk I/O indicates high power consumption."""
-        disk_read = metrics.get('disk_read_mb', 0.0)
-        disk_write = metrics.get('disk_write_mb', 0.0)
+        disk_read = metrics.get("disk_read_mb", 0.0)
+        disk_write = metrics.get("disk_write_mb", 0.0)
 
         # High if combined I/O > 50 MB/s
         total_io = disk_read + disk_write
@@ -254,8 +249,8 @@ class PowerAnalyzer:
 
     def _is_high_network(self, metrics: Dict) -> bool:
         """Check if network activity indicates high power consumption."""
-        net_sent = metrics.get('network_sent_mb', 0.0)
-        net_recv = metrics.get('network_recv_mb', 0.0)
+        net_sent = metrics.get("network_sent_mb", 0.0)
+        net_recv = metrics.get("network_recv_mb", 0.0)
 
         # High if combined network > 10 MB/s
         total_network = net_sent + net_recv
@@ -265,21 +260,23 @@ class PowerAnalyzer:
         """Check if multiple processes are consuming moderate CPU."""
         # This is a heuristic check - in a real implementation,
         # we'd need process list data to make this determination
-        cpu_percent = metrics.get('cpu_percent', 0.0)
-        top_process_cpu = metrics.get('top_process_cpu', 0.0)
+        cpu_percent = metrics.get("cpu_percent", 0.0)
+        top_process_cpu = metrics.get("top_process_cpu", 0.0)
 
         # If total CPU is moderate but no single process dominates,
         # likely multiple processes
-        if (self.MULTIPLE_PROCESS_CPU_MIN < cpu_percent < self.CPU_HIGH_THRESHOLD and
-            top_process_cpu < self.CPU_SINGLE_PROCESS_THRESHOLD):
+        if (
+            self.MULTIPLE_PROCESS_CPU_MIN < cpu_percent < self.CPU_HIGH_THRESHOLD
+            and top_process_cpu < self.CPU_SINGLE_PROCESS_THRESHOLD
+        ):
             return True
 
         return False
 
     def _score_cpu(self, metrics: Dict) -> float:
         """Calculate severity score for CPU usage."""
-        cpu_percent = metrics.get('cpu_percent', 0.0)
-        top_process_cpu = metrics.get('top_process_cpu', 0.0)
+        cpu_percent = metrics.get("cpu_percent", 0.0)
+        top_process_cpu = metrics.get("top_process_cpu", 0.0)
 
         # Score based on how far above threshold
         total_score = max(0, cpu_percent - self.CPU_HIGH_THRESHOLD)
@@ -289,23 +286,23 @@ class PowerAnalyzer:
 
     def _score_disk_io(self, metrics: Dict) -> float:
         """Calculate severity score for disk I/O."""
-        disk_read = metrics.get('disk_read_mb', 0.0)
-        disk_write = metrics.get('disk_write_mb', 0.0)
+        disk_read = metrics.get("disk_read_mb", 0.0)
+        disk_write = metrics.get("disk_write_mb", 0.0)
 
         total_io = disk_read + disk_write
         return max(0, total_io - self.DISK_IO_THRESHOLD)
 
     def _score_network(self, metrics: Dict) -> float:
         """Calculate severity score for network activity."""
-        net_sent = metrics.get('network_sent_mb', 0.0)
-        net_recv = metrics.get('network_recv_mb', 0.0)
+        net_sent = metrics.get("network_sent_mb", 0.0)
+        net_recv = metrics.get("network_recv_mb", 0.0)
 
         total_network = net_sent + net_recv
         return max(0, total_network - self.NETWORK_IO_THRESHOLD) * 2
 
     def _score_multiple_processes(self, metrics: Dict) -> float:
         """Calculate severity score for multiple processes."""
-        cpu_percent = metrics.get('cpu_percent', 0.0)
+        cpu_percent = metrics.get("cpu_percent", 0.0)
 
         # Lower score since this is less impactful
         return cpu_percent * 0.5
@@ -315,20 +312,14 @@ class PowerAnalyzer:
         top_processes = []
 
         # Extract single top process from metrics
-        if 'top_process_name' in metrics and 'top_process_cpu' in metrics:
-            top_processes.append({
-                'name': metrics['top_process_name'],
-                'cpu_percent': metrics['top_process_cpu']
-            })
+        if "top_process_name" in metrics and "top_process_cpu" in metrics:
+            top_processes.append(
+                {"name": metrics["top_process_name"], "cpu_percent": metrics["top_process_cpu"]}
+            )
 
         return top_processes
 
-    def _calculate_confidence(
-        self,
-        metrics: Dict,
-        causes: List[str],
-        power_draw: float
-    ) -> int:
+    def _calculate_confidence(self, metrics: Dict, causes: List[str], power_draw: float) -> int:
         """
         Calculate confidence level (0-100) for the analysis.
 
@@ -344,50 +335,47 @@ class PowerAnalyzer:
             confidence += 20
 
         # Increase confidence if power draw is very high
-        threshold = self.config.get('high_power_threshold_percent_per_10min', 2.0) * 6.0
+        threshold = self.config.get("high_power_threshold_percent_per_10min", 2.0) * 6.0
         if power_draw > threshold * 1.5:
             confidence += 15
 
         # Increase confidence if we have complete metrics
-        required_metrics = ['cpu_percent', 'power_draw_estimate']
+        required_metrics = ["cpu_percent", "power_draw_estimate"]
         if all(key in metrics for key in required_metrics):
             confidence += 10
 
         # Increase confidence if top process identified
-        if 'top_process_name' in metrics:
+        if "top_process_name" in metrics:
             confidence += 5
 
         # Cap at 100
         return min(100, confidence)
 
     def _generate_recommendations(
-        self,
-        primary_cause: str,
-        contributing_factors: List[str],
-        metrics: Dict
+        self, primary_cause: str, contributing_factors: List[str], metrics: Dict
     ) -> str:
         """Generate actionable recommendations based on analysis."""
         recommendations = []
 
         # Recommendations based on primary cause
         if primary_cause == self.HIGH_CPU:
-            cpu_percent = metrics.get('cpu_percent', 0)
+            cpu_percent = metrics.get("cpu_percent", 0)
             recommendations.append(
                 f"High CPU usage detected ({cpu_percent:.1f}%). "
                 "Consider closing unnecessary applications or background processes."
             )
 
-            if 'top_process_name' in metrics:
-                process_name = metrics['top_process_name']
-                process_cpu = metrics.get('top_process_cpu', 0)
+            if "top_process_name" in metrics:
+                process_name = metrics["top_process_name"]
+                process_cpu = metrics.get("top_process_cpu", 0)
                 recommendations.append(
                     f"Process '{process_name}' is using {process_cpu:.1f}% CPU. "
                     "Check if this process needs to be running."
                 )
 
         elif primary_cause == self.HIGH_DISK_IO:
-            disk_read = metrics.get('disk_read_mb', 0)
-            disk_write = metrics.get('disk_write_mb', 0)
+            disk_read = metrics.get("disk_read_mb", 0)
+            disk_write = metrics.get("disk_write_mb", 0)
             total_io = disk_read + disk_write
             recommendations.append(
                 f"High disk I/O detected ({total_io:.1f} MB/s). "
@@ -395,8 +383,8 @@ class PowerAnalyzer:
             )
 
         elif primary_cause == self.HIGH_NETWORK:
-            net_sent = metrics.get('network_sent_mb', 0)
-            net_recv = metrics.get('network_recv_mb', 0)
+            net_sent = metrics.get("network_sent_mb", 0)
+            net_recv = metrics.get("network_recv_mb", 0)
             total_net = net_sent + net_recv
             recommendations.append(
                 f"High network activity detected ({total_net:.1f} MB/s). "
@@ -423,10 +411,9 @@ class PowerAnalyzer:
             recommendations.append("Also check network activity.")
 
         # General power saving tips
-        if metrics.get('battery_percent', 100) < 30:
+        if metrics.get("battery_percent", 100) < 30:
             recommendations.append(
-                "Battery is low. Consider enabling battery saver mode or "
-                "connecting to power."
+                "Battery is low. Consider enabling battery saver mode or connecting to power."
             )
 
         return " ".join(recommendations)
@@ -434,11 +421,11 @@ class PowerAnalyzer:
     def _empty_analysis(self) -> Dict:
         """Return empty analysis structure for error cases."""
         return {
-            'is_high_power': False,
-            'primary_cause': self.UNKNOWN,
-            'contributing_factors': [],
-            'top_processes': [],
-            'confidence': 0,
-            'power_draw': 0.0,
-            'recommendations': 'Unable to analyze current state due to insufficient data.'
+            "is_high_power": False,
+            "primary_cause": self.UNKNOWN,
+            "contributing_factors": [],
+            "top_processes": [],
+            "confidence": 0,
+            "power_draw": 0.0,
+            "recommendations": "Unable to analyze current state due to insufficient data.",
         }

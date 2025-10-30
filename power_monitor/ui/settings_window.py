@@ -6,7 +6,7 @@ Provides a tkinter-based UI for configuring all application settings.
 
 import logging
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox, ttk
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -87,8 +87,7 @@ class SettingsWindow(tk.Toplevel):
         scrollable_frame = ttk.Frame(canvas)
 
         scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
@@ -103,77 +102,88 @@ class SettingsWindow(tk.Toplevel):
 
         # Monitoring Interval
         row = self._add_entry_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Monitoring Interval (seconds):",
             "monitoring_interval_seconds",
-            "How often to check battery status (5-300 seconds)"
+            "How often to check battery status (5-300 seconds)",
         )
 
         # High Power Threshold
         row = self._add_entry_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "High Power Threshold (%/10min):",
             "high_power_threshold_percent_per_10min",
-            "Battery drain rate that triggers high power warning (0.1-50.0)"
+            "Battery drain rate that triggers high power warning (0.1-50.0)",
         )
 
         # Low Battery Warning
         row = self._add_scale_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Low Battery Warning (%):",
             "low_battery_warning_percent",
-            from_=5, to=50,
-            "Battery percentage that triggers low battery warning"
+            from_=5,
+            to=50,
+            description="Battery percentage that triggers low battery warning",
         )
 
         # Critical Battery
         row = self._add_scale_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Critical Battery (%):",
             "critical_battery_percent",
-            from_=1, to=20,
-            "Battery percentage that triggers critical battery warning"
+            from_=1,
+            to=20,
+            description="Battery percentage that triggers critical battery warning",
         )
 
         # Notification Cooldown
         row = self._add_entry_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Notification Cooldown (min):",
             "notification_cooldown_minutes",
-            "Minimum time between repeated notifications (1-120 minutes)"
+            "Minimum time between repeated notifications (1-120 minutes)",
         )
 
         # Data Retention
         row = self._add_entry_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Data Retention (days):",
             "data_retention_days",
-            "How long to keep historical data (1-365 days)"
+            "How long to keep historical data (1-365 days)",
         )
 
         # Log Level
         row = self._add_combobox_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Log Level:",
             "log_level",
             values=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-            description="Application logging verbosity level"
+            description="Application logging verbosity level",
         )
 
         # Enable Notifications
         row = self._add_checkbox_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Enable Notifications:",
             "enable_notifications",
-            "Show system notifications for battery events"
+            "Show system notifications for battery events",
         )
 
         # Auto Start Monitoring
         row = self._add_checkbox_field(
-            scrollable_frame, row,
+            scrollable_frame,
+            row,
             "Auto Start Monitoring:",
             "auto_start_monitoring",
-            "Automatically start monitoring when application launches"
+            "Automatically start monitoring when application launches",
         )
 
         # Separator
@@ -185,23 +195,15 @@ class SettingsWindow(tk.Toplevel):
         button_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
         # Buttons
-        ttk.Button(
-            button_frame,
-            text="Save",
-            command=self._on_save
-        ).grid(row=0, column=0, padx=5)
+        ttk.Button(button_frame, text="Save", command=self._on_save).grid(row=0, column=0, padx=5)
 
-        ttk.Button(
-            button_frame,
-            text="Cancel",
-            command=self._on_cancel
-        ).grid(row=0, column=1, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=self._on_cancel).grid(
+            row=0, column=1, padx=5
+        )
 
-        ttk.Button(
-            button_frame,
-            text="Reset to Defaults",
-            command=self._on_reset
-        ).grid(row=0, column=2, padx=5)
+        ttk.Button(button_frame, text="Reset to Defaults", command=self._on_reset).grid(
+            row=0, column=2, padx=5
+        )
 
     def _add_entry_field(self, parent, row: int, label: str, key: str, description: str) -> int:
         """
@@ -227,15 +229,16 @@ class SettingsWindow(tk.Toplevel):
 
         # Description
         desc = ttk.Label(parent, text=description, font=("", 8), foreground="gray")
-        desc.grid(row=row+1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
+        desc.grid(row=row + 1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
 
         # Store widget
         self.widgets[key] = entry
 
         return row + 2
 
-    def _add_scale_field(self, parent, row: int, label: str, key: str,
-                         from_: float, to: float, description: str) -> int:
+    def _add_scale_field(
+        self, parent, row: int, label: str, key: str, from_: float, to: float, description: str
+    ) -> int:
         """
         Add a scale slider field to the settings form.
 
@@ -271,22 +274,23 @@ class SettingsWindow(tk.Toplevel):
             to=to,
             orient=tk.HORIZONTAL,
             variable=value_var,
-            command=lambda v: value_var.set(round(float(v)))
+            command=lambda v: value_var.set(round(float(v))),
         )
         scale.grid(row=0, column=0, sticky=(tk.W, tk.E))
         scale_frame.columnconfigure(0, weight=1)
 
         # Description
         desc = ttk.Label(parent, text=description, font=("", 8), foreground="gray")
-        desc.grid(row=row+1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
+        desc.grid(row=row + 1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
 
         # Store widget (store the variable, not the scale)
         self.widgets[key] = value_var
 
         return row + 2
 
-    def _add_combobox_field(self, parent, row: int, label: str, key: str,
-                           values: list, description: str) -> int:
+    def _add_combobox_field(
+        self, parent, row: int, label: str, key: str, values: list, description: str
+    ) -> int:
         """
         Add a combobox field to the settings form.
 
@@ -311,15 +315,14 @@ class SettingsWindow(tk.Toplevel):
 
         # Description
         desc = ttk.Label(parent, text=description, font=("", 8), foreground="gray")
-        desc.grid(row=row+1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
+        desc.grid(row=row + 1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
 
         # Store widget
         self.widgets[key] = combo
 
         return row + 2
 
-    def _add_checkbox_field(self, parent, row: int, label: str, key: str,
-                           description: str) -> int:
+    def _add_checkbox_field(self, parent, row: int, label: str, key: str, description: str) -> int:
         """
         Add a checkbox field to the settings form.
 
@@ -344,7 +347,7 @@ class SettingsWindow(tk.Toplevel):
 
         # Description
         desc = ttk.Label(parent, text=description, font=("", 8), foreground="gray")
-        desc.grid(row=row+1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
+        desc.grid(row=row + 1, column=1, sticky=tk.W, padx=5, pady=(0, 5))
 
         # Store widget (store the variable, not the checkbutton)
         self.widgets[key] = var
@@ -359,9 +362,7 @@ class SettingsWindow(tk.Toplevel):
             for key, widget in self.widgets.items():
                 value = config.get(key)
 
-                if isinstance(widget, tk.BooleanVar):
-                    widget.set(value)
-                elif isinstance(widget, tk.DoubleVar):
+                if isinstance(widget, tk.BooleanVar) or isinstance(widget, tk.DoubleVar):
                     widget.set(value)
                 elif isinstance(widget, ttk.Entry):
                     widget.delete(0, tk.END)
@@ -373,10 +374,7 @@ class SettingsWindow(tk.Toplevel):
 
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
-            messagebox.showerror(
-                "Error",
-                f"Failed to load configuration: {e}"
-            )
+            messagebox.showerror("Error", f"Failed to load configuration: {e}")
 
     def _validate_inputs(self) -> tuple[bool, Optional[str]]:
         """
@@ -462,17 +460,13 @@ class SettingsWindow(tk.Toplevel):
         values["notification_cooldown_minutes"] = float(
             self.widgets["notification_cooldown_minutes"].get()
         )
-        values["data_retention_days"] = int(
-            self.widgets["data_retention_days"].get()
-        )
+        values["data_retention_days"] = int(self.widgets["data_retention_days"].get())
 
         # Scale fields (already numeric)
         values["low_battery_warning_percent"] = int(
             self.widgets["low_battery_warning_percent"].get()
         )
-        values["critical_battery_percent"] = int(
-            self.widgets["critical_battery_percent"].get()
-        )
+        values["critical_battery_percent"] = int(self.widgets["critical_battery_percent"].get())
 
         # Combobox fields
         values["log_level"] = self.widgets["log_level"].get()
@@ -510,30 +504,18 @@ class SettingsWindow(tk.Toplevel):
                             logger.error(f"Error in save callback: {e}")
 
                     # Show success message
-                    messagebox.showinfo(
-                        "Success",
-                        "Settings saved successfully!"
-                    )
+                    messagebox.showinfo("Success", "Settings saved successfully!")
 
                     # Close window
                     self.destroy()
                 else:
-                    messagebox.showerror(
-                        "Error",
-                        "Failed to save configuration to file"
-                    )
+                    messagebox.showerror("Error", "Failed to save configuration to file")
             else:
-                messagebox.showerror(
-                    "Error",
-                    "Failed to update configuration"
-                )
+                messagebox.showerror("Error", "Failed to update configuration")
 
         except Exception as e:
             logger.error(f"Error saving settings: {e}")
-            messagebox.showerror(
-                "Error",
-                f"An error occurred while saving settings: {e}"
-            )
+            messagebox.showerror("Error", f"An error occurred while saving settings: {e}")
 
     def _on_cancel(self):
         """Handle cancel button click."""
@@ -546,7 +528,7 @@ class SettingsWindow(tk.Toplevel):
         result = messagebox.askyesno(
             "Confirm Reset",
             "Are you sure you want to reset all settings to their default values?\n\n"
-            "This action cannot be undone."
+            "This action cannot be undone.",
         )
 
         if result:
@@ -560,17 +542,11 @@ class SettingsWindow(tk.Toplevel):
                     messagebox.showinfo(
                         "Success",
                         "Settings have been reset to default values.\n\n"
-                        "Click 'Save' to apply these changes."
+                        "Click 'Save' to apply these changes.",
                     )
                 else:
-                    messagebox.showerror(
-                        "Error",
-                        "Failed to reset configuration to defaults"
-                    )
+                    messagebox.showerror("Error", "Failed to reset configuration to defaults")
 
             except Exception as e:
                 logger.error(f"Error resetting settings: {e}")
-                messagebox.showerror(
-                    "Error",
-                    f"An error occurred while resetting settings: {e}"
-                )
+                messagebox.showerror("Error", f"An error occurred while resetting settings: {e}")

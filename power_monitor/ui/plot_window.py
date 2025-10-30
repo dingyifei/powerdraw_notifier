@@ -1,11 +1,13 @@
 """
 PlotWindow - Embed matplotlib plot in tkinter window
 """
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+
 import logging
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 logger = logging.getLogger("PowerMonitor.PlotWindow")
 
@@ -18,7 +20,7 @@ class PlotWindow(tk.Toplevel):
         "1 hour": 1,
         "6 hours": 6,
         "24 hours": 24,
-        "7 days": 168  # 7 * 24 hours
+        "7 days": 168,  # 7 * 24 hours
     }
 
     def __init__(self, parent, plotter):
@@ -65,32 +67,20 @@ class PlotWindow(tk.Toplevel):
             textvariable=self.time_range_var,
             values=list(self.TIME_RANGE_MAP.keys()),
             state="readonly",
-            width=15
+            width=15,
         )
         self.time_range_combo.pack(side=tk.LEFT, padx=5)
 
         # Refresh button
-        self.refresh_btn = ttk.Button(
-            control_frame,
-            text="Refresh",
-            command=self._refresh_plot
-        )
+        self.refresh_btn = ttk.Button(control_frame, text="Refresh", command=self._refresh_plot)
         self.refresh_btn.pack(side=tk.LEFT, padx=5)
 
         # Export PNG button
-        self.export_btn = ttk.Button(
-            control_frame,
-            text="Export PNG",
-            command=self._export_png
-        )
+        self.export_btn = ttk.Button(control_frame, text="Export PNG", command=self._export_png)
         self.export_btn.pack(side=tk.LEFT, padx=5)
 
         # Close button
-        self.close_btn = ttk.Button(
-            control_frame,
-            text="Close",
-            command=self._on_close
-        )
+        self.close_btn = ttk.Button(control_frame, text="Close", command=self._on_close)
         self.close_btn.pack(side=tk.RIGHT, padx=5)
 
         # Toolbar frame (will be populated with NavigationToolbar2Tk)
@@ -159,11 +149,7 @@ class PlotWindow(tk.Toplevel):
 
         except Exception as e:
             logger.error(f"Error refreshing plot: {e}", exc_info=True)
-            messagebox.showerror(
-                "Error",
-                f"Failed to refresh plot:\n{str(e)}",
-                parent=self
-            )
+            messagebox.showerror("Error", f"Failed to refresh plot:\n{str(e)}", parent=self)
 
         finally:
             # Re-enable buttons
@@ -172,11 +158,7 @@ class PlotWindow(tk.Toplevel):
     def _export_png(self):
         """Export current plot to PNG file"""
         if self.current_figure is None:
-            messagebox.showwarning(
-                "No Plot",
-                "No plot available to export.",
-                parent=self
-            )
+            messagebox.showwarning("No Plot", "No plot available to export.", parent=self)
             return
 
         try:
@@ -185,11 +167,8 @@ class PlotWindow(tk.Toplevel):
                 parent=self,
                 title="Export Plot as PNG",
                 defaultextension=".png",
-                filetypes=[
-                    ("PNG files", "*.png"),
-                    ("All files", "*.*")
-                ],
-                initialfile=f"power_monitor.png"
+                filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+                initialfile="power_monitor.png",
             )
 
             if not filepath:
@@ -201,22 +180,14 @@ class PlotWindow(tk.Toplevel):
 
             # Export the figure
             # Note: We need to save without closing, so we'll use savefig directly
-            self.current_figure.savefig(filepath, dpi=100, bbox_inches='tight')
+            self.current_figure.savefig(filepath, dpi=100, bbox_inches="tight")
 
             logger.info(f"Plot exported successfully to: {filepath}")
-            messagebox.showinfo(
-                "Export Successful",
-                f"Plot saved to:\n{filepath}",
-                parent=self
-            )
+            messagebox.showinfo("Export Successful", f"Plot saved to:\n{filepath}", parent=self)
 
         except Exception as e:
             logger.error(f"Error exporting plot: {e}", exc_info=True)
-            messagebox.showerror(
-                "Export Error",
-                f"Failed to export plot:\n{str(e)}",
-                parent=self
-            )
+            messagebox.showerror("Export Error", f"Failed to export plot:\n{str(e)}", parent=self)
 
     def _set_buttons_state(self, state):
         """

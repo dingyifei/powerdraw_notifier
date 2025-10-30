@@ -115,6 +115,31 @@ chmod +x build_linux.sh
 
 The executable will be created in `dist/PowerMonitor/PowerMonitor`.
 
+### Automated Builds (CI/CD)
+
+This project includes GitHub Actions workflows for automated builds and quality checks:
+
+#### Windows Executable Build
+The Windows build workflow automatically creates distributable executables:
+- **Automatic builds**: Triggered on push to main branch or when version tags are created
+- **Manual builds**: Can be triggered from the GitHub Actions tab
+- **Artifacts**: Build artifacts are uploaded and retained for 30 days
+- **Releases**: Version tags (e.g., `v1.0.0`) automatically create GitHub releases with attached executables
+
+To create a release:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow will automatically build and attach the Windows executable to the release.
+
+#### Code Quality Checks
+The Ruff workflow automatically checks code quality:
+- Runs on all pull requests and pushes to main/develop branches
+- Verifies code formatting and linting standards
+- Reports issues directly in the GitHub UI
+
 ## Configuration
 
 Power Monitor uses a `config.json` file for persistent settings. If no configuration file exists, default values are used automatically.
@@ -307,6 +332,10 @@ Power Monitor is built with a modular architecture consisting of several key com
 
 ```
 powerdraw_notifier/
+├── .github/                 # GitHub configuration
+│   └── workflows/          # CI/CD workflows
+│       ├── ruff.yml        # Code quality checks
+│       └── windows-build.yml # Automated Windows builds
 ├── power_monitor/           # Main application package
 │   ├── __init__.py         # Package initialization
 │   ├── main.py             # Application entry point
@@ -334,6 +363,9 @@ powerdraw_notifier/
 │   └── logs/               # Application logs
 ├── generate_icons.py        # Icon generation utility
 ├── PowerMonitor.spec        # PyInstaller specification
+├── pyproject.toml          # Project config and Ruff settings
+├── requirements.txt        # Runtime dependencies
+├── requirements-dev.txt    # Development dependencies
 ├── config.json             # User configuration (created at runtime)
 ├── LICENSE                 # MIT License
 └── README.md               # This file
@@ -346,6 +378,7 @@ powerdraw_notifier/
    python -m venv venv
    source venv/bin/activate  # or venv\Scripts\activate on Windows
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt  # Install development tools
    ```
 
 2. **Enable debug logging**:
@@ -363,6 +396,36 @@ powerdraw_notifier/
 
 4. **View logs**:
    Logs are written to `data/logs/power_monitor_YYYY-MM-DD.log`
+
+### Code Quality
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and code formatting. Ruff is an extremely fast Python linter and formatter that replaces multiple tools (flake8, black, isort, pyupgrade, etc.).
+
+**Check code for issues**:
+```bash
+ruff check power_monitor/ generate_icons.py
+```
+
+**Auto-fix issues**:
+```bash
+ruff check --fix power_monitor/ generate_icons.py
+```
+
+**Format code**:
+```bash
+ruff format power_monitor/ generate_icons.py
+```
+
+Configuration is stored in `pyproject.toml` with project-specific rules:
+- Line length: 100 characters
+- Import sorting: standard library → third-party → first-party → local
+- Enabled rules: pycodestyle, pyflakes, isort, pep8-naming, pyupgrade, bugbear, and more
+
+**Before committing**, always run:
+```bash
+ruff check --fix power_monitor/ generate_icons.py
+ruff format power_monitor/ generate_icons.py
+```
 
 ### Adding Features
 
@@ -521,13 +584,15 @@ Contributions are welcome! Here's how you can help:
 
 ### Development Guidelines
 
-- Follow PEP 8 style guidelines
+- Follow PEP 8 style guidelines (enforced by Ruff)
+- Run `ruff check --fix` and `ruff format` before committing
 - Write docstrings for all public functions and classes
 - Add type hints where appropriate
 - Keep functions focused and modular
 - Handle errors gracefully with appropriate logging
 - Test on Windows, macOS, and Linux when possible
 - Update documentation for user-facing changes
+- Line length: 100 characters maximum
 
 ## Credits
 

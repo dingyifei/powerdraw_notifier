@@ -7,7 +7,7 @@ Handles loading, validating, and saving application configuration.
 import json
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 class ConfigManager:
@@ -22,7 +22,7 @@ class ConfigManager:
         "data_retention_days": 30,
         "log_level": "INFO",
         "enable_notifications": True,
-        "auto_start_monitoring": True
+        "auto_start_monitoring": True,
     }
 
     VALID_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -49,7 +49,7 @@ class ConfigManager:
 
         if self.config_path.exists():
             try:
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path) as f:
                     user_config = json.load(f)
 
                 # Merge user config with defaults
@@ -85,19 +85,25 @@ class ConfigManager:
         if not isinstance(config.get("monitoring_interval_seconds"), (int, float)):
             config["monitoring_interval_seconds"] = 30
         else:
-            config["monitoring_interval_seconds"] = max(5, min(300, config["monitoring_interval_seconds"]))
+            config["monitoring_interval_seconds"] = max(
+                5, min(300, config["monitoring_interval_seconds"])
+            )
 
         # Validate high power threshold
         if not isinstance(config.get("high_power_threshold_percent_per_10min"), (int, float)):
             config["high_power_threshold_percent_per_10min"] = 2.0
         else:
-            config["high_power_threshold_percent_per_10min"] = max(0.1, min(50.0, config["high_power_threshold_percent_per_10min"]))
+            config["high_power_threshold_percent_per_10min"] = max(
+                0.1, min(50.0, config["high_power_threshold_percent_per_10min"])
+            )
 
         # Validate battery percentages
         if not isinstance(config.get("low_battery_warning_percent"), (int, float)):
             config["low_battery_warning_percent"] = 20
         else:
-            config["low_battery_warning_percent"] = max(5, min(50, config["low_battery_warning_percent"]))
+            config["low_battery_warning_percent"] = max(
+                5, min(50, config["low_battery_warning_percent"])
+            )
 
         if not isinstance(config.get("critical_battery_percent"), (int, float)):
             config["critical_battery_percent"] = 10
@@ -112,7 +118,9 @@ class ConfigManager:
         if not isinstance(config.get("notification_cooldown_minutes"), (int, float)):
             config["notification_cooldown_minutes"] = 15
         else:
-            config["notification_cooldown_minutes"] = max(1, min(120, config["notification_cooldown_minutes"]))
+            config["notification_cooldown_minutes"] = max(
+                1, min(120, config["notification_cooldown_minutes"])
+            )
 
         # Validate data retention
         if not isinstance(config.get("data_retention_days"), (int, float)):
@@ -212,7 +220,7 @@ class ConfigManager:
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
                 # Write config to file with nice formatting
-                with open(self.config_path, 'w') as f:
+                with open(self.config_path, "w") as f:
                     json.dump(self.config, f, indent=2)
 
                 print(f"Configuration saved to {self.config_path}")

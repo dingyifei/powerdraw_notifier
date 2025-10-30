@@ -5,11 +5,12 @@ Collects system metrics including battery status, CPU usage,
 memory usage, disk I/O, network I/O, and process information.
 """
 
-import psutil
+import logging
 import threading
 import time
-import logging
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
+
+import psutil
 
 
 class PowerMonitor:
@@ -90,7 +91,9 @@ class PowerMonitor:
                     success = self.database.insert_metrics(metrics)
 
                     if success:
-                        self.logger.debug(f"Metrics collected: Battery={metrics.get('battery_percent')}%, CPU={metrics.get('cpu_percent')}%")
+                        self.logger.debug(
+                            f"Metrics collected: Battery={metrics.get('battery_percent')}%, CPU={metrics.get('cpu_percent')}%"
+                        )
                     else:
                         self.logger.error("Failed to store metrics in database")
 
@@ -107,10 +110,10 @@ class PowerMonitor:
         """Initialize baseline measurements for rate calculations."""
         try:
             # Initialize I/O baselines
-            if hasattr(psutil, 'disk_io_counters'):
+            if hasattr(psutil, "disk_io_counters"):
                 self.last_disk_io = psutil.disk_io_counters()
 
-            if hasattr(psutil, 'net_io_counters'):
+            if hasattr(psutil, "net_io_counters"):
                 self.last_net_io = psutil.net_io_counters()
 
             self.last_io_time = time.time()
@@ -137,9 +140,7 @@ class PowerMonitor:
         """
         try:
             current_time = time.time()
-            metrics = {
-                'timestamp': int(current_time)
-            }
+            metrics = {"timestamp": int(current_time)}
 
             # Collect battery metrics
             battery_info = self._get_battery_info()
@@ -147,11 +148,11 @@ class PowerMonitor:
                 metrics.update(battery_info)
 
             # Collect CPU usage
-            metrics['cpu_percent'] = psutil.cpu_percent(interval=0)
+            metrics["cpu_percent"] = psutil.cpu_percent(interval=0)
 
             # Collect memory usage
             mem = psutil.virtual_memory()
-            metrics['memory_percent'] = mem.percent
+            metrics["memory_percent"] = mem.percent
 
             # Collect disk I/O rates
             disk_rates = self._get_disk_io_rates(current_time)
@@ -166,17 +167,19 @@ class PowerMonitor:
             # Get top CPU process
             top_process = self._get_top_process()
             if top_process:
-                metrics['top_process_name'] = top_process['name']
-                metrics['top_process_cpu'] = top_process['cpu_percent']
+                metrics["top_process_name"] = top_process["name"]
+                metrics["top_process_cpu"] = top_process["cpu_percent"]
 
             # Calculate power draw estimate
-            if self.previous_metrics and 'battery_percent' in metrics and 'battery_percent' in self.previous_metrics:
+            if (
+                self.previous_metrics
+                and "battery_percent" in metrics
+                and "battery_percent" in self.previous_metrics
+            ):
                 power_draw = self._calculate_power_draw(
-                    current_time,
-                    metrics,
-                    self.previous_metrics
+                    current_time, metrics, self.previous_metrics
                 )
-                metrics['power_draw_estimate'] = power_draw
+                metrics["power_draw_estimate"] = power_draw
 
             # Store for next calculation
             self.previous_metrics = metrics.copy()
@@ -206,15 +209,17 @@ class PowerMonitor:
                 return None
 
             return {
-                'battery_percent': round(battery.percent, 2),
-                'power_plugged': 1 if battery.power_plugged else 0
+                "battery_percent": round(battery.percent, 2),
+                "power_plugged": 1 if battery.power_plugged else 0,
             }
 
         except Exception as e:
             self.logger.warning(f"Error getting battery info: {e}")
             return None
 
-    def _calculate_power_draw(self, current_time: float, current_metrics: Dict, previous_metrics: Dict) -> float:
+    def _calculate_power_draw(
+        self, current_time: float, current_metrics: Dict, previous_metrics: Dict
+    ) -> float:
         """
         Calculate power draw estimate based on battery percentage change.
 
@@ -228,11 +233,11 @@ class PowerMonitor:
         """
         try:
             # Only calculate if on battery
-            if current_metrics.get('power_plugged', 0) == 1:
+            if current_metrics.get("power_plugged", 0) == 1:
                 return 0.0
 
-            battery_now = current_metrics.get('battery_percent', 0)
-            battery_prev = previous_metrics.get('battery_percent', 0)
+            battery_now = current_metrics.get("battery_percent", 0)
+            battery_prev = previous_metrics.get("battery_percent", 0)
 
             time_delta = current_time - (self.previous_time or current_time)
 
@@ -264,7 +269,7 @@ class PowerMonitor:
             Dictionary with disk I/O rates
         """
         try:
-            if not hasattr(psutil, 'disk_io_counters'):
+            if not hasattr(psutil, "disk_io_counters"):
                 return None
 
             current_disk = psutil.disk_io_counters()
@@ -272,25 +277,30 @@ class PowerMonitor:
             if current_disk is None or self.last_disk_io is None:
                 self.last_disk_io = current_disk
                 self.last_io_time = current_time
-                return {'disk_read_mb': 0.0, 'disk_write_mb': 0.0}
+                return {"disk_read_mb": 0.0, "disk_write_mb": 0.0}
 
             time_delta = current_time - self.last_io_time
 
             if time_delta <= 0:
-                return {'disk_read_mb': 0.0, 'disk_write_mb': 0.0}
+                return {"disk_read_mb": 0.0, "disk_write_mb": 0.0}
 
             # Calculate rates
-            read_rate = (current_disk.read_bytes - self.last_disk_io.read_bytes) / time_delta / (1024 * 1024)
-            write_rate = (current_disk.write_bytes - self.last_disk_io.write_bytes) / time_delta / (1024 * 1024)
+            read_rate = (
+                (current_disk.read_bytes - self.last_disk_io.read_bytes)
+                / time_delta
+                / (1024 * 1024)
+            )
+            write_rate = (
+                (current_disk.write_bytes - self.last_disk_io.write_bytes)
+                / time_delta
+                / (1024 * 1024)
+            )
 
             # Update last values
             self.last_disk_io = current_disk
             self.last_io_time = current_time
 
-            return {
-                'disk_read_mb': round(read_rate, 2),
-                'disk_write_mb': round(write_rate, 2)
-            }
+            return {"disk_read_mb": round(read_rate, 2), "disk_write_mb": round(write_rate, 2)}
 
         except Exception as e:
             self.logger.warning(f"Error getting disk I/O rates: {e}")
@@ -307,31 +317,32 @@ class PowerMonitor:
             Dictionary with network I/O rates
         """
         try:
-            if not hasattr(psutil, 'net_io_counters'):
+            if not hasattr(psutil, "net_io_counters"):
                 return None
 
             current_net = psutil.net_io_counters()
 
             if current_net is None or self.last_net_io is None:
                 self.last_net_io = current_net
-                return {'network_sent_mb': 0.0, 'network_recv_mb': 0.0}
+                return {"network_sent_mb": 0.0, "network_recv_mb": 0.0}
 
             time_delta = current_time - self.last_io_time
 
             if time_delta <= 0:
-                return {'network_sent_mb': 0.0, 'network_recv_mb': 0.0}
+                return {"network_sent_mb": 0.0, "network_recv_mb": 0.0}
 
             # Calculate rates
-            sent_rate = (current_net.bytes_sent - self.last_net_io.bytes_sent) / time_delta / (1024 * 1024)
-            recv_rate = (current_net.bytes_recv - self.last_net_io.bytes_recv) / time_delta / (1024 * 1024)
+            sent_rate = (
+                (current_net.bytes_sent - self.last_net_io.bytes_sent) / time_delta / (1024 * 1024)
+            )
+            recv_rate = (
+                (current_net.bytes_recv - self.last_net_io.bytes_recv) / time_delta / (1024 * 1024)
+            )
 
             # Update last values
             self.last_net_io = current_net
 
-            return {
-                'network_sent_mb': round(sent_rate, 2),
-                'network_recv_mb': round(recv_rate, 2)
-            }
+            return {"network_sent_mb": round(sent_rate, 2), "network_recv_mb": round(recv_rate, 2)}
 
         except Exception as e:
             self.logger.warning(f"Error getting network I/O rates: {e}")
@@ -348,9 +359,9 @@ class PowerMonitor:
             top_proc = None
             max_cpu = 0
 
-            for proc in psutil.process_iter(['name', 'cpu_percent']):
+            for proc in psutil.process_iter(["name", "cpu_percent"]):
                 try:
-                    cpu = proc.info.get('cpu_percent', 0)
+                    cpu = proc.info.get("cpu_percent", 0)
                     if cpu and cpu > max_cpu:
                         max_cpu = cpu
                         top_proc = proc.info
@@ -359,10 +370,7 @@ class PowerMonitor:
                     continue
 
             if top_proc and max_cpu > 0:
-                return {
-                    'name': top_proc.get('name', 'Unknown'),
-                    'cpu_percent': round(max_cpu, 1)
-                }
+                return {"name": top_proc.get("name", "Unknown"), "cpu_percent": round(max_cpu, 1)}
 
             return None
 
@@ -405,19 +413,21 @@ class PowerMonitor:
 
             # Second pass: collect
             processes = []
-            for proc in psutil.process_iter(['pid', 'name', 'cpu_percent']):
+            for proc in psutil.process_iter(["pid", "name", "cpu_percent"]):
                 try:
-                    if proc.info['cpu_percent'] and proc.info['cpu_percent'] > 0:
-                        processes.append({
-                            'pid': proc.info['pid'],
-                            'name': proc.info['name'],
-                            'cpu_percent': round(proc.info['cpu_percent'], 1)
-                        })
+                    if proc.info["cpu_percent"] and proc.info["cpu_percent"] > 0:
+                        processes.append(
+                            {
+                                "pid": proc.info["pid"],
+                                "name": proc.info["name"],
+                                "cpu_percent": round(proc.info["cpu_percent"], 1),
+                            }
+                        )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
             # Sort and return top N
-            processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
+            processes.sort(key=lambda x: x["cpu_percent"], reverse=True)
             return processes[:n]
 
         except Exception as e:

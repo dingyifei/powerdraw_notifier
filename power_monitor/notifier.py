@@ -6,13 +6,14 @@ import logging
 import platform
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger("PowerMonitor.Notifier")
 
 
 class NotificationType(Enum):
     """Types of notifications that can be sent."""
+
     LOW_BATTERY = "low_battery"
     CRITICAL_BATTERY = "critical_battery"
     HIGH_POWER_DRAW = "high_power_draw"
@@ -41,6 +42,7 @@ class PowerNotifier:
         try:
             # Try standard plyer import
             from plyer import notification
+
             self._notification_module = notification
             logger.debug("Initialized notification system using plyer")
         except (ImportError, NotImplementedError) as e:
@@ -49,18 +51,20 @@ class PowerNotifier:
             # Fallback for PyInstaller builds - direct platform import
             try:
                 system = platform.system().lower()
-                if system == 'windows':
+                if system == "windows":
                     from plyer.platforms.win import notification
-                elif system == 'darwin':
+                elif system == "darwin":
                     from plyer.platforms.macosx import notification
-                elif system == 'linux':
+                elif system == "linux":
                     from plyer.platforms.linux import notification
                 else:
                     logger.error(f"Unsupported platform: {system}")
                     return
 
                 self._notification_module = notification
-                logger.debug(f"Initialized notification system using direct platform import for {system}")
+                logger.debug(
+                    f"Initialized notification system using direct platform import for {system}"
+                )
             except (ImportError, NotImplementedError) as e:
                 logger.error(f"Failed to initialize notification system: {e}")
 
@@ -74,7 +78,7 @@ class PowerNotifier:
         Returns:
             True if notification should be sent, False otherwise
         """
-        cooldown_minutes = self.config.get('notification_cooldown_minutes', 15)
+        cooldown_minutes = self.config.get("notification_cooldown_minutes", 15)
 
         if notification_type not in self.last_notifications:
             return True
@@ -95,10 +99,7 @@ class PowerNotifier:
         return should_send
 
     def _send_notification(
-        self,
-        title: str,
-        message: str,
-        notification_type: NotificationType
+        self, title: str, message: str, notification_type: NotificationType
     ) -> bool:
         """
         Send a notification and update the last notification time.
@@ -125,15 +126,15 @@ class PowerNotifier:
         try:
             # Determine icon format based on platform
             system = platform.system().lower()
-            icon_extension = '.ico' if system == 'windows' else '.png'
-            app_icon = f'resources/icon{icon_extension}'
+            icon_extension = ".ico" if system == "windows" else ".png"
+            app_icon = f"resources/icon{icon_extension}"
 
             self._notification_module.notify(
                 title=title,
                 message=message,
-                app_name='Power Monitor',
+                app_name="Power Monitor",
                 app_icon=app_icon,
-                timeout=10
+                timeout=10,
             )
 
             # Update last notification time
@@ -166,9 +167,7 @@ class PowerNotifier:
         message = f"Battery level at {percent:.0f}%. Consider charging soon."
 
         return self._send_notification(
-            title=title,
-            message=message,
-            notification_type=NotificationType.LOW_BATTERY
+            title=title, message=message, notification_type=NotificationType.LOW_BATTERY
         )
 
     def notify_critical_battery(self, percent: float) -> bool:
@@ -185,16 +184,10 @@ class PowerNotifier:
         message = f"Battery critically low at {percent:.0f}%! Charge immediately."
 
         return self._send_notification(
-            title=title,
-            message=message,
-            notification_type=NotificationType.CRITICAL_BATTERY
+            title=title, message=message, notification_type=NotificationType.CRITICAL_BATTERY
         )
 
-    def notify_high_power_draw(
-        self,
-        analysis: Dict,
-        battery_percent: float
-    ) -> bool:
+    def notify_high_power_draw(self, analysis: Dict, battery_percent: float) -> bool:
         """
         Send a high power draw notification with primary cause.
 
@@ -209,11 +202,11 @@ class PowerNotifier:
 
         # Extract primary cause from analysis
         primary_cause = "Unknown"
-        if analysis and 'primary_cause' in analysis:
-            cause_data = analysis['primary_cause']
+        if analysis and "primary_cause" in analysis:
+            cause_data = analysis["primary_cause"]
             if isinstance(cause_data, dict):
-                process_name = cause_data.get('process', 'Unknown')
-                cpu_usage = cause_data.get('cpu_percent', 0)
+                process_name = cause_data.get("process", "Unknown")
+                cpu_usage = cause_data.get("cpu_percent", 0)
                 primary_cause = f"{process_name} ({cpu_usage:.0f}% CPU)"
             else:
                 primary_cause = str(cause_data)
@@ -221,16 +214,10 @@ class PowerNotifier:
         message = f"Primary cause: {primary_cause}. Battery at {battery_percent:.0f}%."
 
         return self._send_notification(
-            title=title,
-            message=message,
-            notification_type=NotificationType.HIGH_POWER_DRAW
+            title=title, message=message, notification_type=NotificationType.HIGH_POWER_DRAW
         )
 
-    def notify_unusual_drain(
-        self,
-        power_draw: float,
-        battery_percent: float
-    ) -> bool:
+    def notify_unusual_drain(self, power_draw: float, battery_percent: float) -> bool:
         """
         Send an unusual battery drain notification.
 
@@ -248,7 +235,5 @@ class PowerNotifier:
         )
 
         return self._send_notification(
-            title=title,
-            message=message,
-            notification_type=NotificationType.UNUSUAL_DRAIN
+            title=title, message=message, notification_type=NotificationType.UNUSUAL_DRAIN
         )

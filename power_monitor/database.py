@@ -13,6 +13,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
+
 import pandas as pd
 
 
@@ -96,26 +97,29 @@ class PowerDatabase:
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO power_metrics (
                         timestamp, battery_percent, power_plugged, power_draw_estimate,
                         cpu_percent, memory_percent, disk_read_mb, disk_write_mb,
                         network_sent_mb, network_recv_mb, top_process_name, top_process_cpu
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    metrics.get('timestamp', int(time.time())),
-                    metrics.get('battery_percent'),
-                    metrics.get('power_plugged'),
-                    metrics.get('power_draw_estimate'),
-                    metrics.get('cpu_percent'),
-                    metrics.get('memory_percent'),
-                    metrics.get('disk_read_mb'),
-                    metrics.get('disk_write_mb'),
-                    metrics.get('network_sent_mb'),
-                    metrics.get('network_recv_mb'),
-                    metrics.get('top_process_name'),
-                    metrics.get('top_process_cpu')
-                ))
+                """,
+                    (
+                        metrics.get("timestamp", int(time.time())),
+                        metrics.get("battery_percent"),
+                        metrics.get("power_plugged"),
+                        metrics.get("power_draw_estimate"),
+                        metrics.get("cpu_percent"),
+                        metrics.get("memory_percent"),
+                        metrics.get("disk_read_mb"),
+                        metrics.get("disk_write_mb"),
+                        metrics.get("network_sent_mb"),
+                        metrics.get("network_recv_mb"),
+                        metrics.get("top_process_name"),
+                        metrics.get("top_process_cpu"),
+                    ),
+                )
 
                 conn.commit()
                 conn.close()
@@ -140,18 +144,21 @@ class PowerDatabase:
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO high_power_events (
                         timestamp, duration_seconds, primary_cause,
                         processes_involved, avg_power_draw
                     ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    event.get('timestamp', int(time.time())),
-                    event.get('duration_seconds'),
-                    event.get('primary_cause'),
-                    event.get('processes_involved'),
-                    event.get('avg_power_draw')
-                ))
+                """,
+                    (
+                        event.get("timestamp", int(time.time())),
+                        event.get("duration_seconds"),
+                        event.get("primary_cause"),
+                        event.get("processes_involved"),
+                        event.get("avg_power_draw"),
+                    ),
+                )
 
                 conn.commit()
                 conn.close()
@@ -209,11 +216,14 @@ class PowerDatabase:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT * FROM power_metrics
                     ORDER BY timestamp DESC
                     LIMIT ?
-                """, (count,))
+                """,
+                    (count,),
+                )
 
                 rows = cursor.fetchall()
                 metrics = [dict(row) for row in rows]
@@ -242,11 +252,14 @@ class PowerDatabase:
 
                 start_time = int(time.time()) - (minutes * 60)
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT AVG(power_draw_estimate) as avg_draw
                     FROM power_metrics
                     WHERE timestamp >= ? AND power_draw_estimate IS NOT NULL
-                """, (start_time,))
+                """,
+                    (start_time,),
+                )
 
                 result = cursor.fetchone()
                 conn.close()
@@ -275,11 +288,14 @@ class PowerDatabase:
 
                 start_time = int(time.time()) - (hours * 3600)
 
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT * FROM high_power_events
                     WHERE timestamp >= ?
                     ORDER BY timestamp DESC
-                """, (start_time,))
+                """,
+                    (start_time,),
+                )
 
                 rows = cursor.fetchall()
                 events = [dict(row) for row in rows]
@@ -310,18 +326,24 @@ class PowerDatabase:
                 cutoff_time = int(time.time()) - (days * 24 * 3600)
 
                 # Delete old metrics
-                cursor.execute("""
+                cursor.execute(
+                    """
                     DELETE FROM power_metrics
                     WHERE timestamp < ?
-                """, (cutoff_time,))
+                """,
+                    (cutoff_time,),
+                )
 
                 metrics_deleted = cursor.rowcount
 
                 # Delete old events
-                cursor.execute("""
+                cursor.execute(
+                    """
                     DELETE FROM high_power_events
                     WHERE timestamp < ?
-                """, (cutoff_time,))
+                """,
+                    (cutoff_time,),
+                )
 
                 events_deleted = cursor.rowcount
 
@@ -333,7 +355,9 @@ class PowerDatabase:
                 conn.close()
 
                 total_deleted = metrics_deleted + events_deleted
-                print(f"Deleted {total_deleted} old records (metrics: {metrics_deleted}, events: {events_deleted})")
+                print(
+                    f"Deleted {total_deleted} old records (metrics: {metrics_deleted}, events: {events_deleted})"
+                )
 
                 return total_deleted
 
@@ -369,16 +393,18 @@ class PowerDatabase:
                 oldest, newest = cursor.fetchone()
 
                 # Get database file size
-                file_size_mb = self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0
+                file_size_mb = (
+                    self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0
+                )
 
                 conn.close()
 
                 return {
-                    'metrics_count': metrics_count,
-                    'events_count': events_count,
-                    'oldest_timestamp': oldest,
-                    'newest_timestamp': newest,
-                    'file_size_mb': round(file_size_mb, 2)
+                    "metrics_count": metrics_count,
+                    "events_count": events_count,
+                    "oldest_timestamp": oldest,
+                    "newest_timestamp": newest,
+                    "file_size_mb": round(file_size_mb, 2),
                 }
 
             except Exception as e:
@@ -389,4 +415,3 @@ class PowerDatabase:
         """Close database connections (cleanup method)."""
         # SQLite connections are opened/closed per operation
         # This method exists for API consistency
-        pass

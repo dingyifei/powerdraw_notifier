@@ -48,6 +48,64 @@ python generate_icons.py
 python -m power_monitor.main
 ```
 
+### Code Quality & Linting
+
+This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and code formatting. Ruff is an extremely fast Python linter and formatter written in Rust.
+
+```bash
+# Install development dependencies (includes ruff)
+pip install -r requirements-dev.txt
+
+# Run linter
+ruff check power_monitor/ generate_icons.py
+
+# Auto-fix issues
+ruff check --fix power_monitor/ generate_icons.py
+
+# Format code
+ruff format power_monitor/ generate_icons.py
+
+# Check a specific file
+ruff check power_monitor/main.py
+```
+
+Configuration is stored in `pyproject.toml` with project-specific rules and exclusions.
+
+### CI/CD Workflows
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+#### Ruff Code Quality Workflow
+- **File**: `.github/workflows/ruff.yml`
+- **Triggers**: Push/PR to main or develop branches (when .py files change)
+- **Actions**:
+  - Runs `ruff check` to detect code quality issues
+  - Runs `ruff format --check` to verify code formatting
+  - Reports issues directly in GitHub UI using annotations
+- **Purpose**: Ensures all code meets quality standards before merging
+
+#### Windows Build Workflow
+- **File**: `.github/workflows/windows-build.yml`
+- **Triggers**:
+  - Push to main branch
+  - Version tags (v*)
+  - Manual dispatch
+  - Pull requests to main
+- **Actions**:
+  - Builds Windows executable with PyInstaller
+  - Generates application icons
+  - Verifies build artifacts
+  - Creates versioned ZIP archive
+  - Uploads artifacts (30-day retention)
+  - Automatically creates GitHub releases for tagged versions
+- **Purpose**: Automated Windows executable packaging and distribution
+
+To trigger a release build, create and push a version tag:
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ### Building Executables
 
 ```bash
@@ -68,6 +126,10 @@ build_scripts\build_windows.bat
 
 ```
 powerdraw_notifier/
+├── .github/                    # GitHub configuration
+│   └── workflows/              # GitHub Actions workflows
+│       ├── ruff.yml            # Code quality checks
+│       └── windows-build.yml   # Windows executable build
 ├── power_monitor/              # Main application package
 │   ├── __init__.py
 │   ├── main.py                 # Entry point & system tray
@@ -96,6 +158,7 @@ powerdraw_notifier/
 ├── config.json                 # User configuration
 ├── requirements.txt            # Runtime dependencies
 ├── requirements-dev.txt        # Development dependencies
+├── pyproject.toml              # Project metadata and ruff config
 ├── PowerMonitor.spec           # PyInstaller spec file
 ├── generate_icons.py           # Icon generation script
 ├── README.md                   # User documentation
@@ -269,10 +332,13 @@ power_draw = (battery_prev - battery_now) / hours_elapsed
 4. **New UI**: Create new window class in `ui/` package
 
 ### Code Style
-- Follow PEP 8
+- Follow PEP 8 standards (enforced by Ruff)
 - Use type hints where appropriate
 - Docstrings for all public methods
 - Logging for debugging and error tracking
+- Run `ruff check --fix` and `ruff format` before committing
+- Line length: 100 characters maximum
+- Import sorting: standard library → third-party → first-party → local
 
 ### Testing Checklist
 - [ ] Monitoring starts and collects data
@@ -319,6 +385,7 @@ power_draw = (battery_prev - battery_now) / hours_elapsed
 
 ### Development Dependencies
 - **pyinstaller**: Executable packaging
+- **ruff**: Fast Python linter and formatter (replaces flake8, black, isort, etc.)
 
 ## License
 

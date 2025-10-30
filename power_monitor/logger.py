@@ -7,10 +7,9 @@ data cleanup based on retention policies.
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 
 def setup_logging(config, log_dir: str = "data/logs") -> logging.Logger:
@@ -41,13 +40,10 @@ def setup_logging(config, log_dir: str = "data/logs") -> logging.Logger:
 
     # Create formatters
     detailed_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    console_formatter = logging.Formatter(
-        '%(levelname)s: %(message)s'
-    )
+    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
 
     # File handler with rotation (10 MB max, keep 5 backups)
     log_file = log_path / f"power_monitor_{datetime.now().strftime('%Y-%m-%d')}.log"
@@ -55,7 +51,7 @@ def setup_logging(config, log_dir: str = "data/logs") -> logging.Logger:
         log_file,
         maxBytes=10 * 1024 * 1024,  # 10 MB
         backupCount=5,
-        encoding='utf-8'
+        encoding="utf-8",
     )
     file_handler.setLevel(log_level)
     file_handler.setFormatter(detailed_formatter)
@@ -67,11 +63,11 @@ def setup_logging(config, log_dir: str = "data/logs") -> logging.Logger:
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Power Monitor logging initialized")
     logger.info(f"Log level: {log_level_str}")
     logger.info(f"Log file: {log_file}")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     return logger
 
@@ -124,28 +120,24 @@ def cleanup_old_data(database, retention_days: int, log_dir: str = "data/logs") 
     Returns:
         Dictionary with cleanup statistics
     """
-    stats = {
-        'db_records_deleted': 0,
-        'log_files_deleted': 0,
-        'success': False
-    }
+    stats = {"db_records_deleted": 0, "log_files_deleted": 0, "success": False}
 
     try:
         # Clean database records
-        stats['db_records_deleted'] = database.cleanup_old_records(retention_days)
+        stats["db_records_deleted"] = database.cleanup_old_records(retention_days)
 
         # Clean log files
-        stats['log_files_deleted'] = cleanup_old_logs(log_dir, retention_days)
+        stats["log_files_deleted"] = cleanup_old_logs(log_dir, retention_days)
 
-        stats['success'] = True
+        stats["success"] = True
 
-        print(f"Data cleanup complete:")
+        print("Data cleanup complete:")
         print(f"  - Database records deleted: {stats['db_records_deleted']}")
         print(f"  - Log files deleted: {stats['log_files_deleted']}")
 
     except Exception as e:
         print(f"Error during data cleanup: {e}")
-        stats['error'] = str(e)
+        stats["error"] = str(e)
 
     return stats
 
@@ -194,7 +186,7 @@ class LogManager:
         retention_days = self.config.get("data_retention_days", 30)
         stats = cleanup_old_data(self.database, retention_days, self.log_dir)
 
-        if stats['success']:
+        if stats["success"]:
             self.last_cleanup = time.time()
 
         return stats
@@ -209,17 +201,14 @@ class LogManager:
         log_path = Path(self.log_dir)
 
         if not log_path.exists():
-            return {
-                'log_count': 0,
-                'total_size_mb': 0
-            }
+            return {"log_count": 0, "total_size_mb": 0}
 
         log_files = list(log_path.glob("*.log*"))
         total_size = sum(f.stat().st_size for f in log_files if f.is_file())
 
         return {
-            'log_count': len(log_files),
-            'total_size_mb': round(total_size / (1024 * 1024), 2),
-            'oldest_log': min((f.stat().st_mtime for f in log_files), default=None),
-            'newest_log': max((f.stat().st_mtime for f in log_files), default=None)
+            "log_count": len(log_files),
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "oldest_log": min((f.stat().st_mtime for f in log_files), default=None),
+            "newest_log": max((f.stat().st_mtime for f in log_files), default=None),
         }

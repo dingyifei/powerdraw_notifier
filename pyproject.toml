@@ -1,0 +1,76 @@
+[project]
+name = "powerdraw-notifier"
+version = "1.0.0"
+description = "Cross-platform power monitoring and notification system"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+[tool.ruff]
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+    "data",
+]
+
+# Line length to match common standards
+line-length = 100
+
+# Target Python 3.8+
+target-version = "py38"
+
+[tool.ruff.lint]
+# Enable recommended rules plus additional useful ones
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort (import sorting)
+    "N",     # pep8-naming
+    "UP",    # pyupgrade (modernize Python code)
+    "B",     # flake8-bugbear (find likely bugs)
+    "C4",    # flake8-comprehensions (better list/dict comprehensions)
+    "SIM",   # flake8-simplify (simplify code)
+    "PIE",   # flake8-pie (misc lints)
+    "RET",   # flake8-return (better return statements)
+    "PTH",   # flake8-use-pathlib (prefer pathlib)
+    "LOG",   # flake8-logging (logging best practices)
+]
+
+# Ignore specific rules that may be too strict for this project
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "PTH123", # Use pathlib.Path.open() - not always needed
+    "PTH118", # os.path.join() - acceptable in many cases
+    "PTH119", # os.path.basename() - acceptable in many cases
+    "PTH120", # os.path.dirname() - acceptable in many cases
+    "RET504", # Unnecessary variable assignment before return
+    "SIM108", # Use ternary operator - not always more readable
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow unused imports in __init__.py files
+"__init__.py" = ["F401"]
+# Allow print statements in scripts
+"generate_icons.py" = ["T201"]
+"build_scripts/*.py" = ["T201"]
+
+[tool.ruff.lint.isort]
+# Configure import sorting
+known-first-party = ["power_monitor"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Use Unix line endings
+line-ending = "auto"
