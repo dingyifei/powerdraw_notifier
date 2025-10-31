@@ -103,6 +103,7 @@ class PowerMonitorApp:
 
         # Threading control
         self.shutdown_event = threading.Event()
+        self.shutdown_initiated = False  # Prevent double-shutdown
         self.analysis_thread = None
         self.is_high_power_alert = False
 
@@ -135,7 +136,23 @@ class PowerMonitorApp:
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
         self.logger.info(f"Received signal {signum}, shutting down...")
-        self.shutdown()
+        # Set shutdown event first
+        self.shutdown_event.set()
+        # Schedule shutdown on Tkinter's event loop to ensure proper cleanup
+        try:
+            self.root.after_idle(self.shutdown)
+        except Exception:
+            # If Tkinter is not available, call shutdown directly
+            self.shutdown()
+
+    def _check_shutdown_periodic(self):
+        """Periodically check if shutdown was requested (makes Ctrl+C responsive)."""
+        if self.shutdown_event.is_set():
+            self.logger.debug("Shutdown event detected in periodic check")
+            self.shutdown()
+        else:
+            # Check again in 100ms
+            self.root.after(100, self._check_shutdown_periodic)
 
     def _configure_tkinter_scaling(self):
         """Configure tkinter scaling for high DPI displays."""
@@ -326,7 +343,7 @@ class PowerMonitorApp:
 
     def start_monitoring(self):
         """Start the monitoring thread if not already running."""
-        if self.monitor.running.is_set():
+        if not self.monitor.stop_event.is_set():
             self.logger.info("Monitoring already running")
             return
 
@@ -342,7 +359,7 @@ class PowerMonitorApp:
 
     def stop_monitoring(self):
         """Stop the monitoring thread."""
-        if not self.monitor.running.is_set():
+        if self.monitor.stop_event.is_set():
             self.logger.info("Monitoring not running")
             return
 
@@ -502,7 +519,7 @@ class PowerMonitorApp:
             self.icon.menu = self._create_tray_menu()
 
         # Restart monitoring if it was running to apply new interval
-        if self.monitor.running.is_set():
+        if not self.monitor.stop_event.is_set():
             self.logger.info("Restarting monitoring to apply new settings")
             self.stop_monitoring()
             self.start_monitoring()
@@ -564,13 +581,19 @@ class PowerMonitorApp:
 
     def shutdown(self):
         """Perform graceful shutdown of the application."""
+        # Prevent double-shutdown
+        if self.shutdown_initiated:
+            self.logger.debug("Shutdown already in progress, skipping")
+            return
+
+        self.shutdown_initiated = True
         self.logger.info("Initiating shutdown...")
 
         # Set shutdown event
         self.shutdown_event.set()
 
         # Stop monitoring
-        if self.monitor.running.is_set():
+        if not self.monitor.stop_event.is_set():
             self.monitor.stop()
 
         # Close database
@@ -660,6 +683,9 @@ class PowerMonitorApp:
                     target=self.icon.run, daemon=True, name="PystrayThread"
                 )
                 icon_thread.start()
+
+                # Start periodic shutdown check (makes Ctrl+C responsive)
+                self.root.after(100, self._check_shutdown_periodic)
 
                 # Run Tkinter mainloop on main thread (this blocks)
                 self.root.mainloop()

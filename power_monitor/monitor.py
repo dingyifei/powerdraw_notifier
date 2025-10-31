@@ -34,7 +34,7 @@ class PowerMonitor:
         self.logger = logging.getLogger("PowerMonitor.Monitor")
 
         # Threading control
-        self.running = threading.Event()
+        self.stop_event = threading.Event()  # Set when stopping to wake thread immediately
         self.monitor_thread = None
 
         # Previous metrics for rate calculations
@@ -56,21 +56,21 @@ class PowerMonitor:
             return
 
         self.logger.info("Starting power monitor...")
-        self.running.set()
+        self.stop_event.clear()  # Clear stop event to allow thread to run
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.monitor_thread.start()
 
     def stop(self):
         """Stop monitoring gracefully."""
-        if not self.running.is_set():
+        if self.stop_event.is_set():
             self.logger.warning("Monitor not running")
             return
 
         self.logger.info("Stopping power monitor...")
-        self.running.clear()
+        self.stop_event.set()  # Signal thread to stop - wakes immediately
 
         if self.monitor_thread:
-            self.monitor_thread.join(timeout=5.0)
+            self.monitor_thread.join(timeout=2.0)  # Reduced timeout since wake is instant
 
         self.logger.info("Power monitor stopped")
 
@@ -81,7 +81,7 @@ class PowerMonitor:
         # Initialize baselines
         self._initialize_baselines()
 
-        while self.running.is_set():
+        while not self.stop_event.is_set():
             try:
                 # Collect metrics
                 metrics = self.collect_metrics()
@@ -100,9 +100,9 @@ class PowerMonitor:
             except Exception as e:
                 self.logger.error(f"Error in monitor loop: {e}", exc_info=True)
 
-            # Wait for next interval
+            # Wait for next interval (wakes immediately if stop_event is set)
             interval = self.config.get("monitoring_interval_seconds", 30)
-            self.running.wait(timeout=interval)
+            self.stop_event.wait(timeout=interval)
 
         self.logger.info("Monitor loop exited")
 
