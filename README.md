@@ -14,7 +14,7 @@ Power Monitor is a comprehensive desktop application that tracks battery power c
 - **Interactive Power Usage Plots**: Visualize power consumption trends with matplotlib-powered charts
 - **Configurable Thresholds and Settings**: Customize monitoring intervals, power thresholds, battery warnings, and notification preferences
 - **Resource Tracking**: Monitor CPU usage, memory consumption, disk I/O, network activity, and top power-consuming processes
-- **Syncthing Integration**: Pause and resume Syncthing sync directly from the system tray menu to conserve battery power
+- **Battery-Aware Syncthing Integration**: Automatically pauses Syncthing sync on battery power and resumes on AC, with manual override support
 
 ## Screenshots
 
@@ -162,6 +162,9 @@ Place `config.json` in the same directory as the executable or Python script.
 | `log_level` | string | "INFO" | See below | Logging verbosity level |
 | `enable_notifications` | boolean | true | - | Enable/disable desktop notifications |
 | `auto_start_monitoring` | boolean | true | - | Start monitoring automatically on launch |
+| `syncthing_enabled` | boolean | false | - | Enable Syncthing integration |
+| `syncthing_api_key` | string | "" | - | Syncthing REST API key |
+| `syncthing_auto_pause_on_battery` | boolean | true | - | Auto-pause Syncthing on battery power |
 
 ### Valid Log Levels
 
@@ -183,7 +186,10 @@ Place `config.json` in the same directory as the executable or Python script.
   "data_retention_days": 30,
   "log_level": "INFO",
   "enable_notifications": true,
-  "auto_start_monitoring": true
+  "auto_start_monitoring": true,
+  "syncthing_enabled": false,
+  "syncthing_api_key": "",
+  "syncthing_auto_pause_on_battery": true
 }
 ```
 
@@ -222,8 +228,9 @@ Right-click (Windows/Linux) or click (macOS) the system tray icon to access:
   - Power draw estimation over time
 
 - **Syncthing: Syncing/Paused** *(optional, if Syncthing integration enabled)*
-  - Toggles Syncthing sync on/off
-  - Shows current sync state in the menu label
+  - Automatically pauses on battery power, resumes on AC (if auto-pause enabled)
+  - Manual toggle overrides automatic behavior until next AC plug-in
+  - Shows current sync state with indicators: Syncing, Paused (Auto), Paused (Manual), Syncing (Manual)
   - Useful for conserving battery power
 
 - **Settings**: Opens configuration dialog
@@ -271,7 +278,27 @@ Settings are saved to `config.json` and take effect immediately. If monitoring i
 
 ### Syncthing Integration
 
-Power Monitor can integrate with [Syncthing](https://syncthing.net/) to give you quick control over file synchronization directly from the system tray menu. This is useful for conserving battery power by pausing sync operations when needed.
+Power Monitor can integrate with [Syncthing](https://syncthing.net/) to give you quick control over file synchronization directly from the system tray menu. The integration includes **battery-aware automatic pause/resume** to help conserve battery power when unplugged.
+
+#### Features
+
+- **Automatic Battery-Aware Sync Control**:
+  - Automatically pauses Syncthing when running on battery power
+  - Automatically resumes Syncthing when AC power is connected
+  - Checks power state every monitoring interval (~30 seconds)
+
+- **Manual Override Support**:
+  - Click menu to manually pause/resume at any time
+  - Manual actions override auto-pause behavior:
+    - **Manual Pause**: Stays paused until next AC plug-in
+    - **Manual Resume**: Keeps syncing even on battery until next AC plug-in
+    - **AC Plug-in**: Resets to default auto-pause behavior
+
+- **Status Indicators**:
+  - **"Syncthing: Syncing"** - Normal syncing (on AC or manually resumed)
+  - **"Syncthing: Paused (Auto)"** - Auto-paused on battery
+  - **"Syncthing: Paused (Manual)"** - User manually paused
+  - **"Syncthing: Syncing (Manual)"** - User manually resumed on battery
 
 #### Setup
 
@@ -286,13 +313,15 @@ Power Monitor can integrate with [Syncthing](https://syncthing.net/) to give you
    - Scroll to the **Syncthing Integration** section
    - Check **Enable Syncthing Integration**
    - Paste your API key into the **Syncthing API Key** field
+   - (Optional) Check **Auto-pause on battery** to enable battery-aware sync (enabled by default)
    - Click **Test Connection** to verify the connection works
    - Click **Save**
 
 3. **Usage**:
    - After configuration, a new menu item will appear: **Syncthing: Syncing** or **Syncthing: Paused**
-   - Click this menu item to toggle between paused and syncing states
-   - The label dynamically updates to show the current status
+   - The status indicator shows whether sync is paused automatically or manually
+   - Click this menu item to manually toggle between paused and syncing states
+   - Manual actions override auto-pause until the next AC plug-in event
 
 #### Finding Your Syncthing API Key
 

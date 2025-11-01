@@ -36,6 +36,9 @@ class PowerDatabase:
         # Initialize database schema
         self._init_db()
 
+        # Open persistent connection (reduces connection overhead)
+        self._db_connection = sqlite3.connect(self.db_path, check_same_thread=False)
+
     def _init_db(self):
         """Create database tables if they don't exist."""
         with self.lock:
@@ -94,8 +97,7 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                cursor = self._db_connection.cursor()
 
                 cursor.execute(
                     """
@@ -121,8 +123,7 @@ class PowerDatabase:
                     ),
                 )
 
-                conn.commit()
-                conn.close()
+                self._db_connection.commit()
                 return True
 
             except Exception as e:
@@ -141,8 +142,7 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                cursor = self._db_connection.cursor()
 
                 cursor.execute(
                     """
@@ -160,8 +160,7 @@ class PowerDatabase:
                     ),
                 )
 
-                conn.commit()
-                conn.close()
+                self._db_connection.commit()
                 return True
 
             except Exception as e:
@@ -180,8 +179,6 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-
                 # Calculate timestamp for N hours ago
                 start_time = int(time.time()) - (hours * 3600)
 
@@ -191,8 +188,7 @@ class PowerDatabase:
                     ORDER BY timestamp ASC
                 """
 
-                df = pd.read_sql_query(query, conn, params=(start_time,))
-                conn.close()
+                df = pd.read_sql_query(query, self._db_connection, params=(start_time,))
 
                 return df
 
@@ -212,9 +208,8 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                self._db_connection.row_factory = sqlite3.Row
+                cursor = self._db_connection.cursor()
 
                 cursor.execute(
                     """
@@ -228,7 +223,9 @@ class PowerDatabase:
                 rows = cursor.fetchall()
                 metrics = [dict(row) for row in rows]
 
-                conn.close()
+                # Reset row factory to default
+                self._db_connection.row_factory = None
+
                 return metrics
 
             except Exception as e:
@@ -247,8 +244,7 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                cursor = self._db_connection.cursor()
 
                 start_time = int(time.time()) - (minutes * 60)
 
@@ -262,7 +258,6 @@ class PowerDatabase:
                 )
 
                 result = cursor.fetchone()
-                conn.close()
 
                 return result[0] if result and result[0] is not None else None
 
@@ -282,9 +277,8 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
+                self._db_connection.row_factory = sqlite3.Row
+                cursor = self._db_connection.cursor()
 
                 start_time = int(time.time()) - (hours * 3600)
 
@@ -300,7 +294,9 @@ class PowerDatabase:
                 rows = cursor.fetchall()
                 events = [dict(row) for row in rows]
 
-                conn.close()
+                # Reset row factory to default
+                self._db_connection.row_factory = None
+
                 return events
 
             except Exception as e:
@@ -319,8 +315,7 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                cursor = self._db_connection.cursor()
 
                 # Calculate cutoff timestamp
                 cutoff_time = int(time.time()) - (days * 24 * 3600)
@@ -347,12 +342,10 @@ class PowerDatabase:
 
                 events_deleted = cursor.rowcount
 
-                conn.commit()
+                self._db_connection.commit()
 
                 # Vacuum to reclaim space
                 cursor.execute("VACUUM")
-
-                conn.close()
 
                 total_deleted = metrics_deleted + events_deleted
                 print(
@@ -365,6 +358,102 @@ class PowerDatabase:
                 print(f"Error cleaning up old records: {e}")
                 return 0
 
+    def cleanup_by_size(self, max_size_mb: int) -> int:
+        """
+        Delete oldest 50% of metrics if database exceeds max size.
+
+        Args:
+            max_size_mb: Maximum database size in MB
+
+        Returns:
+            Number of records deleted
+        """
+        with self.lock:
+            try:
+                # Check current database size
+                current_size_mb = (
+                    self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0
+                )
+
+                if current_size_mb <= max_size_mb:
+                    return 0  # No cleanup needed
+
+                print(
+                    f"Database size ({current_size_mb:.2f} MB) exceeds limit ({max_size_mb} MB). "
+                    "Removing oldest 50% of metrics..."
+                )
+
+                cursor = self._db_connection.cursor()
+
+                # Get total count of metrics
+                cursor.execute("SELECT COUNT(*) FROM power_metrics")
+                total_count = cursor.fetchone()[0]
+
+                if total_count == 0:
+                    return 0
+
+                # Calculate how many to delete (50%)
+                delete_count = total_count // 2
+
+                # Get the timestamp of the record at the 50% mark
+                cursor.execute(
+                    """
+                    SELECT timestamp FROM power_metrics
+                    ORDER BY timestamp ASC
+                    LIMIT 1 OFFSET ?
+                """,
+                    (delete_count,),
+                )
+
+                result = cursor.fetchone()
+                if not result:
+                    return 0
+
+                cutoff_timestamp = result[0]
+
+                # Delete oldest 50% of metrics
+                cursor.execute(
+                    """
+                    DELETE FROM power_metrics
+                    WHERE timestamp < ?
+                """,
+                    (cutoff_timestamp,),
+                )
+
+                metrics_deleted = cursor.rowcount
+
+                # Also clean up old events with same timestamp cutoff
+                cursor.execute(
+                    """
+                    DELETE FROM high_power_events
+                    WHERE timestamp < ?
+                """,
+                    (cutoff_timestamp,),
+                )
+
+                events_deleted = cursor.rowcount
+
+                self._db_connection.commit()
+
+                # Vacuum to reclaim space
+                cursor.execute("VACUUM")
+
+                total_deleted = metrics_deleted + events_deleted
+                new_size_mb = (
+                    self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0
+                )
+
+                print(
+                    f"Deleted {total_deleted} old records (metrics: {metrics_deleted}, events: {events_deleted}). "
+                    f"New database size: {new_size_mb:.2f} MB"
+                )
+
+                return total_deleted
+
+            except Exception as e:
+                print(f"Error cleaning up by size: {e}")
+                return 0
+
     def get_stats(self) -> Dict:
         """
         Get database statistics.
@@ -374,8 +463,7 @@ class PowerDatabase:
         """
         with self.lock:
             try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                cursor = self._db_connection.cursor()
 
                 # Get metrics count
                 cursor.execute("SELECT COUNT(*) FROM power_metrics")
@@ -397,8 +485,6 @@ class PowerDatabase:
                     self.db_path.stat().st_size / (1024 * 1024) if self.db_path.exists() else 0
                 )
 
-                conn.close()
-
                 return {
                     "metrics_count": metrics_count,
                     "events_count": events_count,
@@ -413,5 +499,9 @@ class PowerDatabase:
 
     def close(self):
         """Close database connections (cleanup method)."""
-        # SQLite connections are opened/closed per operation
-        # This method exists for API consistency
+        with self.lock:
+            if hasattr(self, "_db_connection") and self._db_connection:
+                try:
+                    self._db_connection.close()
+                except Exception as e:
+                    print(f"Error closing database connection: {e}")

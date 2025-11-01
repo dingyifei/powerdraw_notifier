@@ -265,13 +265,10 @@ class PowerAnalyzer:
 
         # If total CPU is moderate but no single process dominates,
         # likely multiple processes
-        if (
+        return (
             self.MULTIPLE_PROCESS_CPU_MIN < cpu_percent < self.CPU_HIGH_THRESHOLD
             and top_process_cpu < self.CPU_SINGLE_PROCESS_THRESHOLD
-        ):
-            return True
-
-        return False
+        )
 
     def _score_cpu(self, metrics: Dict) -> float:
         """Calculate severity score for CPU usage."""

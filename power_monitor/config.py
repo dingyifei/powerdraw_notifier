@@ -20,11 +20,13 @@ class ConfigManager:
         "critical_battery_percent": 10,
         "notification_cooldown_minutes": 15,
         "data_retention_days": 30,
+        "max_database_size_mb": 100,
         "log_level": "INFO",
         "enable_notifications": True,
         "auto_start_monitoring": True,
         "syncthing_enabled": False,
         "syncthing_api_key": "",
+        "syncthing_auto_pause_on_battery": True,
     }
 
     VALID_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -130,6 +132,12 @@ class ConfigManager:
         else:
             config["data_retention_days"] = max(1, min(365, config["data_retention_days"]))
 
+        # Validate max database size
+        if not isinstance(config.get("max_database_size_mb"), (int, float)):
+            config["max_database_size_mb"] = 100
+        else:
+            config["max_database_size_mb"] = max(10, min(10000, config["max_database_size_mb"]))
+
         # Validate log level
         if config.get("log_level") not in self.VALID_LOG_LEVELS:
             config["log_level"] = "INFO"
@@ -147,6 +155,9 @@ class ConfigManager:
 
         if not isinstance(config.get("syncthing_api_key"), str):
             config["syncthing_api_key"] = ""
+
+        if not isinstance(config.get("syncthing_auto_pause_on_battery"), bool):
+            config["syncthing_auto_pause_on_battery"] = True
 
         return config
 

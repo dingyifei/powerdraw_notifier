@@ -162,8 +162,8 @@ class StatsWindow(tk.Toplevel):
     def _refresh_stats(self):
         """Refresh statistics display."""
         try:
-            # Get current stats from monitor
-            stats = self.monitor.get_current_stats()
+            # Get cached stats (avoids redundant psutil calls)
+            stats = self.monitor.get_cached_stats(max_age_seconds=35)
 
             if stats is None:
                 self._display_no_data()

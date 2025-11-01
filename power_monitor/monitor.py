@@ -5,6 +5,7 @@ Collects system metrics including battery status, CPU usage,
 memory usage, disk I/O, network I/O, and process information.
 """
 
+import contextlib
 import logging
 import threading
 import time
@@ -45,6 +46,15 @@ class PowerMonitor:
         self.last_disk_io = None
         self.last_net_io = None
         self.last_io_time = None
+
+        # Metrics caching (to avoid redundant system calls)
+        self._cached_metrics = None
+        self._cache_timestamp = None
+        self._cache_lock = threading.Lock()
+
+        # Database size-based cleanup tracking
+        self._cleanup_check_counter = 0
+        self._cleanup_check_interval = 100  # Check database size every 100 monitoring cycles
 
         # Initialize CPU measurement (non-blocking mode)
         psutil.cpu_percent(interval=0)
@@ -87,6 +97,11 @@ class PowerMonitor:
                 metrics = self.collect_metrics()
 
                 if metrics:
+                    # Cache metrics for other components to use (avoids redundant psutil calls)
+                    with self._cache_lock:
+                        self._cached_metrics = metrics.copy()
+                        self._cache_timestamp = time.time()
+
                     # Store in database
                     success = self.database.insert_metrics(metrics)
 
@@ -94,6 +109,22 @@ class PowerMonitor:
                         self.logger.debug(
                             f"Metrics collected: Battery={metrics.get('battery_percent')}%, CPU={metrics.get('cpu_percent')}%"
                         )
+
+                        # Periodic database size-based cleanup
+                        self._cleanup_check_counter += 1
+                        if self._cleanup_check_counter >= self._cleanup_check_interval:
+                            self._cleanup_check_counter = 0
+                            try:
+                                max_size_mb = self.config.get("max_database_size_mb", 100)
+                                deleted_count = self.database.cleanup_by_size(max_size_mb)
+                                if deleted_count > 0:
+                                    self.logger.info(
+                                        f"Database size cleanup completed: {deleted_count} records removed"
+                                    )
+                            except Exception as cleanup_error:
+                                self.logger.error(
+                                    f"Error during database cleanup: {cleanup_error}", exc_info=True
+                                )
                     else:
                         self.logger.error("Failed to store metrics in database")
 
@@ -120,10 +151,8 @@ class PowerMonitor:
 
             # Initialize process CPU measurements
             for proc in psutil.process_iter():
-                try:
+                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                     proc.cpu_percent()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
 
             # Wait brief moment for initial CPU measurement
             time.sleep(0.1)
@@ -361,10 +390,12 @@ class PowerMonitor:
 
             for proc in psutil.process_iter(["name", "cpu_percent"]):
                 try:
-                    cpu = proc.info.get("cpu_percent", 0)
-                    if cpu and cpu > max_cpu:
-                        max_cpu = cpu
-                        top_proc = proc.info
+                    # Use oneshot() context manager to cache process info and reduce syscalls
+                    with proc.oneshot():
+                        cpu = proc.info.get("cpu_percent", 0)
+                        if cpu and cpu > max_cpu:
+                            max_cpu = cpu
+                            top_proc = proc.info
 
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -391,6 +422,37 @@ class PowerMonitor:
             self.logger.error(f"Error getting current stats: {e}")
             return None
 
+    def get_cached_stats(self, max_age_seconds: float = 5.0) -> Optional[Dict]:
+        """
+        Get cached system statistics to avoid redundant psutil calls.
+
+        This method returns metrics from the cache if they're fresh enough,
+        avoiding expensive system calls. Falls back to collecting new metrics
+        if cache is empty or stale.
+
+        Args:
+            max_age_seconds: Maximum age of cached data in seconds (default: 5.0)
+
+        Returns:
+            Dictionary with cached or fresh stats
+        """
+        try:
+            with self._cache_lock:
+                # Check if cache exists and is fresh
+                if self._cached_metrics and self._cache_timestamp:
+                    age = time.time() - self._cache_timestamp
+                    if age <= max_age_seconds:
+                        self.logger.debug(f"Using cached metrics (age: {age:.1f}s)")
+                        return self._cached_metrics.copy()
+
+            # Cache is stale or empty, collect new metrics
+            self.logger.debug("Cache miss or stale, collecting new metrics")
+            return self.collect_metrics()
+
+        except Exception as e:
+            self.logger.error(f"Error getting cached stats: {e}")
+            return None
+
     def get_top_processes(self, n: int = 5) -> List[Dict]:
         """
         Get top N CPU-consuming processes.
@@ -404,10 +466,8 @@ class PowerMonitor:
         try:
             # First pass: initialize CPU measurement
             for proc in psutil.process_iter():
-                try:
+                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                     proc.cpu_percent()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
 
             time.sleep(0.1)
 

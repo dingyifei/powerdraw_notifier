@@ -5,6 +5,7 @@ Orchestrates all components and provides a system tray interface for monitoring
 battery power draw and system resources.
 """
 
+import contextlib
 import os
 import platform
 import signal
@@ -52,11 +53,9 @@ def enable_dpi_awareness():
                     # Fallback to Windows 8.1 method (per-monitor DPI awareness v1)
                     ctypes.windll.shcore.SetProcessDpiAwareness(1)
                 except Exception:
-                    try:
-                        # Fallback to Windows Vista/7 method (system DPI awareness)
+                    # Fallback to Windows Vista/7 method (system DPI awareness)
+                    with contextlib.suppress(Exception):
                         ctypes.windll.user32.SetProcessDPIAware()
-                    except Exception:
-                        pass  # DPI awareness not available
     except Exception:
         pass  # Silently fail if not supported
 
@@ -90,6 +89,8 @@ class PowerMonitorApp:
 
         # Initialize Syncthing client if enabled
         self.syncthing_client: Optional[SyncthingClient] = None
+        self.syncthing_last_power_state: Optional[int] = None  # Track previous plugged state (0/1)
+        self.syncthing_manual_override: Optional[str] = None  # "pause", "resume", or None
         if self.config.get("syncthing_enabled", False):
             api_key = self.config.get("syncthing_api_key", "")
             if api_key:
@@ -235,12 +236,75 @@ class PowerMonitorApp:
         except Exception as e:
             self.logger.error(f"Error updating tray icon: {e}", exc_info=True)
 
+    def _handle_syncthing_auto_pause(self, battery_percent: Optional[float], power_plugged: int):
+        """
+        Handle automatic Syncthing pause/resume based on battery status.
+
+        Args:
+            battery_percent: Current battery percentage (None if no battery)
+            power_plugged: 1 if plugged in, 0 if on battery
+        """
+        # Skip if Syncthing not enabled or client not initialized
+        if not self.syncthing_client:
+            return
+
+        # Skip if auto-pause feature is disabled
+        if not self.config.get("syncthing_auto_pause_on_battery", True):
+            return
+
+        try:
+            # Detect power state transition
+            power_state_changed = (
+                self.syncthing_last_power_state is not None
+                and self.syncthing_last_power_state != power_plugged
+            )
+
+            # On AC power (plugged in)
+            if power_plugged:
+                # If transitioning from battery to AC
+                if power_state_changed and self.syncthing_last_power_state == 0:
+                    self.logger.info("Power plugged in - resetting Syncthing to default behavior")
+
+                    # Clear manual override when plugging in
+                    self.syncthing_manual_override = None
+
+                    # Resume Syncthing if currently paused
+                    if self.syncthing_client.is_paused():
+                        self.syncthing_client.resume_device()
+                        self.logger.info("Syncthing auto-resumed on AC power")
+                        self._regenerate_menu()  # Update menu to show new status
+
+            # On battery power (unplugged)
+            else:
+                # Check if we should auto-pause
+                should_auto_pause = (
+                    power_state_changed  # Just transitioned to battery
+                    and self.syncthing_manual_override != "resume"  # User hasn't manually resumed
+                )
+
+                if should_auto_pause and not self.syncthing_client.is_paused():
+                    # Pause Syncthing if currently syncing
+                    self.syncthing_client.pause_device()
+                    battery_str = f"{battery_percent:.0f}%" if battery_percent else "unknown"
+                    self.logger.info(
+                        f"Syncthing auto-paused on battery power (battery: {battery_str})"
+                    )
+                    self._regenerate_menu()  # Update menu to show new status
+
+            # Update tracked power state
+            self.syncthing_last_power_state = power_plugged
+
+        except SyncthingError as e:
+            self.logger.error(f"Syncthing auto-pause error: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in Syncthing auto-pause: {e}", exc_info=True)
+
     def _check_high_power_draw(self):
         """Periodically check for high power draw and update icon."""
         while not self.shutdown_event.is_set():
             try:
-                # Get current metrics
-                metrics = self.monitor.get_current_stats()
+                # Get cached metrics (avoids redundant psutil calls)
+                metrics = self.monitor.get_cached_stats(max_age_seconds=35)
 
                 if metrics:
                     # Analyze power draw
@@ -334,6 +398,9 @@ class PowerMonitorApp:
                         ):
                             self.notifier.notify_low_battery(battery_percent)
 
+                    # Handle Syncthing auto-pause based on power state
+                    self._handle_syncthing_auto_pause(battery_percent, power_plugged)
+
             except Exception as e:
                 self.logger.error(f"Error in high power check: {e}", exc_info=True)
 
@@ -409,8 +476,18 @@ class PowerMonitorApp:
             return "Syncthing: Unknown"
 
         try:
-            status = self.syncthing_client.get_status_text()
-            return f"Syncthing: {status}"
+            is_paused = self.syncthing_client.is_paused()
+
+            if is_paused:
+                # Determine if paused manually or automatically
+                if self.syncthing_manual_override == "pause":
+                    return "Syncthing: Paused (Manual)"
+                return "Syncthing: Paused (Auto)"
+            # Syncing - check if manually resumed on battery
+            if self.syncthing_manual_override == "resume":
+                return "Syncthing: Syncing (Manual)"
+            return "Syncthing: Syncing"
+
         except Exception:
             return "Syncthing: Unknown"
 
@@ -436,13 +513,21 @@ class PowerMonitorApp:
 
             if is_paused:
                 self.syncthing_client.resume_device()
-                self.logger.info("Syncthing sync resumed")
+                # Set manual override to resume (stays resumed even on battery until AC plug-in)
+                self.syncthing_manual_override = "resume"
+                self.logger.info(
+                    "Syncthing sync manually resumed (will stay resumed until AC plug-in)"
+                )
                 self.root.after(
                     0, lambda: messagebox.showinfo("Syncthing", "Syncthing sync has been resumed.")
                 )
             else:
                 self.syncthing_client.pause_device()
-                self.logger.info("Syncthing sync paused")
+                # Set manual override to pause (stays paused until AC plug-in)
+                self.syncthing_manual_override = "pause"
+                self.logger.info(
+                    "Syncthing sync manually paused (will stay paused until AC plug-in)"
+                )
                 self.root.after(
                     0, lambda: messagebox.showinfo("Syncthing", "Syncthing sync has been paused.")
                 )

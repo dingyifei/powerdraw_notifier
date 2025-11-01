@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Interactive matplotlib visualizations
 - System tray integration with pystray
 - Configurable thresholds and settings
+- Battery-aware Syncthing integration with automatic pause/resume
 
 ## Development Setup
 
@@ -238,13 +239,25 @@ powerdraw_notifier/
 - Custom exceptions: `SyncthingError`, `SyncthingConnectionError`, `SyncthingAPIError`
 - Connects to localhost:8384 by default
 
+**Battery-Aware Auto-Pause Feature:**
+- Automatically pauses Syncthing when running on battery power
+- Automatically resumes Syncthing when AC power is connected
+- Checks power state every monitoring interval (~30 seconds)
+- Manual override support:
+  - Manual pause: Stays paused until next AC plug-in
+  - Manual resume: Keeps syncing even on battery until next AC plug-in
+  - AC plug-in resets to default behavior (auto-pause when unplugged)
+- Menu displays pause reason: "Syncing", "Paused (Auto)", "Paused (Manual)", "Syncing (Manual)"
+- Feature can be enabled/disabled via `syncthing_auto_pause_on_battery` setting
+
 #### 9. **Main Application** (main.py)
 - System tray icon with pystray
 - Menu: Stats, Plots, Syncthing (optional), Settings, Logs, About, Quit
 - Dynamic icon switching (normal ↔ alert)
-- Dynamic Syncthing menu item showing current status
+- Dynamic Syncthing menu item showing current status (with auto/manual indicators)
 - Graceful shutdown handling
 - Signal handlers for SIGINT/SIGTERM
+- Battery-aware Syncthing auto-pause/resume logic in monitoring loop
 
 ## Configuration Reference
 
@@ -263,6 +276,7 @@ All settings are stored in `config.json`:
 | `auto_start_monitoring` | bool | true | - | Start monitoring on app launch |
 | `syncthing_enabled` | bool | false | - | Enable Syncthing integration |
 | `syncthing_api_key` | str | "" | - | Syncthing REST API key |
+| `syncthing_auto_pause_on_battery` | bool | true | - | Auto-pause Syncthing on battery power |
 
 ## Database Schema
 

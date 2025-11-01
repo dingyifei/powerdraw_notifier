@@ -236,6 +236,15 @@ class SettingsWindow(tk.Toplevel):
             "API key from Syncthing Settings > General > API Key",
         )
 
+        # Auto-pause on battery
+        row = self._add_checkbox_field(
+            scrollable_frame,
+            row,
+            "Auto-pause on battery:",
+            "syncthing_auto_pause_on_battery",
+            "Automatically pause Syncthing when on battery power. Manual controls override until AC plug-in.",
+        )
+
         # Test Connection Button
         test_button_frame = ttk.Frame(scrollable_frame)
         test_button_frame.grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
@@ -606,6 +615,9 @@ class SettingsWindow(tk.Toplevel):
         # Syncthing fields
         values["syncthing_enabled"] = self.widgets["syncthing_enabled"].get()
         values["syncthing_api_key"] = self.widgets["syncthing_api_key"].get()
+        values["syncthing_auto_pause_on_battery"] = self.widgets[
+            "syncthing_auto_pause_on_battery"
+        ].get()
 
         return values
 
