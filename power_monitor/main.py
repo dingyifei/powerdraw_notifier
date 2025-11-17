@@ -91,22 +91,41 @@ class PowerMonitorApp:
         self.syncthing_client: Optional[SyncthingClient] = None
         self.syncthing_last_power_state: Optional[int] = None  # Track previous plugged state (0/1)
         self.syncthing_manual_override: Optional[str] = None  # "pause", "resume", or None
+
+        # Cached Syncthing state (prevents blocking during menu operations)
+        self.syncthing_state_cache = {
+            "is_paused": None,  # None = unknown, True = paused, False = syncing
+            "last_updated": 0,  # Timestamp of last update
+            "is_available": False,  # Whether Syncthing API is reachable
+        }
+        self.syncthing_cache_lock = threading.Lock()
+        self.syncthing_updater_thread = None
+
+        # Threading control (must be initialized before starting any threads)
+        self.shutdown_event = threading.Event()
+        self.shutdown_initiated = False  # Prevent double-shutdown
+        self.analysis_thread = None
+        self.is_high_power_alert = False
+
         if self.config.get("syncthing_enabled", False):
             api_key = self.config.get("syncthing_api_key", "")
             if api_key:
                 try:
                     self.syncthing_client = SyncthingClient(api_key)
                     self.logger.info("Syncthing client initialized")
+
+                    # Start cache updater thread for non-blocking state checks
+                    self.syncthing_updater_thread = threading.Thread(
+                        target=self._syncthing_cache_updater_loop,
+                        daemon=True,
+                        name="SyncthingCacheUpdater",
+                    )
+                    self.syncthing_updater_thread.start()
+
                 except Exception as e:
                     self.logger.error(f"Failed to initialize Syncthing client: {e}", exc_info=True)
             else:
                 self.logger.warning("Syncthing enabled but no API key provided")
-
-        # Threading control
-        self.shutdown_event = threading.Event()
-        self.shutdown_initiated = False  # Prevent double-shutdown
-        self.analysis_thread = None
-        self.is_high_power_alert = False
 
         # High power event tracking
         self.high_power_event_start = None
@@ -236,6 +255,47 @@ class PowerMonitorApp:
         except Exception as e:
             self.logger.error(f"Error updating tray icon: {e}", exc_info=True)
 
+    def _update_syncthing_state_cache(self):
+        """Update cached Syncthing state (non-blocking for callers)."""
+        if not self.syncthing_client:
+            self.logger.debug("Syncthing cache update skipped: no client")
+            return
+
+        try:
+            self.logger.debug("Checking Syncthing pause state...")
+            # Make API call (this may block/timeout, but we're in a background thread)
+            is_paused = self.syncthing_client.is_paused()
+
+            # Update cache atomically
+            with self.syncthing_cache_lock:
+                self.syncthing_state_cache["is_paused"] = is_paused
+                self.syncthing_state_cache["last_updated"] = time.time()
+                self.syncthing_state_cache["is_available"] = True
+
+            self.logger.debug(f"Syncthing state updated: paused={is_paused}")
+
+        except Exception as e:
+            # Mark as unavailable on error
+            with self.syncthing_cache_lock:
+                self.syncthing_state_cache["is_available"] = False
+                self.syncthing_state_cache["last_updated"] = time.time()
+            self.logger.debug(f"Syncthing state update failed: {e}")
+
+    def _syncthing_cache_updater_loop(self):
+        """Background thread loop to update Syncthing state cache."""
+        self.logger.info("Syncthing cache updater thread started")
+
+        while not self.shutdown_event.is_set():
+            try:
+                self._update_syncthing_state_cache()
+            except Exception as e:
+                self.logger.error(f"Error in Syncthing cache updater: {e}", exc_info=True)
+
+            # Wait 2 seconds before next update (or until shutdown)
+            self.shutdown_event.wait(2.0)
+
+        self.logger.info("Syncthing cache updater thread stopped")
+
     def _handle_syncthing_auto_pause(self, battery_percent: Optional[float], power_plugged: int):
         """
         Handle automatic Syncthing pause/resume based on battery status.
@@ -253,6 +313,15 @@ class PowerMonitorApp:
             return
 
         try:
+            # Get cached pause state (non-blocking)
+            with self.syncthing_cache_lock:
+                cached_is_paused = self.syncthing_state_cache["is_paused"]
+                is_available = self.syncthing_state_cache["is_available"]
+
+            # Skip if we don't have valid cache data yet
+            if cached_is_paused is None or not is_available:
+                return
+
             # Detect power state transition
             power_state_changed = (
                 self.syncthing_last_power_state is not None
@@ -269,10 +338,13 @@ class PowerMonitorApp:
                     self.syncthing_manual_override = None
 
                     # Resume Syncthing if currently paused
-                    if self.syncthing_client.is_paused():
+                    if cached_is_paused:
                         self.syncthing_client.resume_device()
                         self.logger.info("Syncthing auto-resumed on AC power")
-                        self._regenerate_menu()  # Update menu to show new status
+                        # Trigger immediate cache update after state change
+                        threading.Thread(
+                            target=self._update_syncthing_state_cache, daemon=True
+                        ).start()
 
             # On battery power (unplugged)
             else:
@@ -282,14 +354,17 @@ class PowerMonitorApp:
                     and self.syncthing_manual_override != "resume"  # User hasn't manually resumed
                 )
 
-                if should_auto_pause and not self.syncthing_client.is_paused():
+                if should_auto_pause and not cached_is_paused:
                     # Pause Syncthing if currently syncing
                     self.syncthing_client.pause_device()
                     battery_str = f"{battery_percent:.0f}%" if battery_percent else "unknown"
                     self.logger.info(
                         f"Syncthing auto-paused on battery power (battery: {battery_str})"
                     )
-                    self._regenerate_menu()  # Update menu to show new status
+                    # Trigger immediate cache update after state change
+                    threading.Thread(
+                        target=self._update_syncthing_state_cache, daemon=True
+                    ).start()
 
             # Update tracked power state
             self.syncthing_last_power_state = power_plugged
@@ -464,7 +539,7 @@ class PowerMonitorApp:
 
     def _get_syncthing_menu_text(self, item):
         """
-        Get dynamic menu text for Syncthing based on current state.
+        Get dynamic menu text for Syncthing based on cached state (non-blocking).
 
         Args:
             item: Menu item (required by pystray)
@@ -475,21 +550,25 @@ class PowerMonitorApp:
         if not self.syncthing_client:
             return "Syncthing: Unknown"
 
-        try:
-            is_paused = self.syncthing_client.is_paused()
+        # Read from cache (instant, no network calls)
+        with self.syncthing_cache_lock:
+            is_paused = self.syncthing_state_cache["is_paused"]
+            is_available = self.syncthing_state_cache["is_available"]
 
-            if is_paused:
-                # Determine if paused manually or automatically
-                if self.syncthing_manual_override == "pause":
-                    return "Syncthing: Paused (Manual)"
-                return "Syncthing: Paused (Auto)"
-            # Syncing - check if manually resumed on battery
-            if self.syncthing_manual_override == "resume":
-                return "Syncthing: Syncing (Manual)"
-            return "Syncthing: Syncing"
-
-        except Exception:
+        # If we haven't checked yet or Syncthing is unavailable
+        if is_paused is None or not is_available:
             return "Syncthing: Unknown"
+
+        if is_paused:
+            # Determine if paused manually or automatically
+            if self.syncthing_manual_override == "pause":
+                return "Syncthing: Paused (Manual)"
+            return "Syncthing: Paused (Auto)"
+
+        # Syncing - check if manually resumed on battery
+        if self.syncthing_manual_override == "resume":
+            return "Syncthing: Syncing (Manual)"
+        return "Syncthing: Syncing"
 
     def _on_toggle_syncthing(self, icon, item):
         """Handle Syncthing pause/resume toggle."""
@@ -508,8 +587,9 @@ class PowerMonitorApp:
             return
 
         try:
-            # Check current state and toggle
-            is_paused = self.syncthing_client.is_paused()
+            # Check current state from cache (non-blocking)
+            with self.syncthing_cache_lock:
+                is_paused = self.syncthing_state_cache["is_paused"]
 
             if is_paused:
                 self.syncthing_client.resume_device()
@@ -532,9 +612,8 @@ class PowerMonitorApp:
                     0, lambda: messagebox.showinfo("Syncthing", "Syncthing sync has been paused.")
                 )
 
-            # Update menu by recreating it
-            if self.icon:
-                self.icon.menu = self._create_tray_menu()
+            # Trigger immediate cache update after state change
+            threading.Thread(target=self._update_syncthing_state_cache, daemon=True).start()
 
         except SyncthingError as e:
             self.logger.error(f"Syncthing error: {e}", exc_info=True)
@@ -580,6 +659,11 @@ class PowerMonitorApp:
         """Callback when settings are saved."""
         self.logger.info("Settings saved, applying changes...")
 
+        # Stop existing cache updater thread if running
+        if self.syncthing_updater_thread and self.syncthing_updater_thread.is_alive():
+            self.logger.info("Stopping Syncthing cache updater for reconfiguration")
+            # Thread will stop on next iteration when it checks shutdown_event
+
         # Reinitialize Syncthing client if settings changed
         if self.config.get("syncthing_enabled", False):
             api_key = self.config.get("syncthing_api_key", "")
@@ -587,6 +671,15 @@ class PowerMonitorApp:
                 try:
                     self.syncthing_client = SyncthingClient(api_key)
                     self.logger.info("Syncthing client reinitialized")
+
+                    # Start cache updater thread
+                    self.syncthing_updater_thread = threading.Thread(
+                        target=self._syncthing_cache_updater_loop,
+                        daemon=True,
+                        name="SyncthingCacheUpdater",
+                    )
+                    self.syncthing_updater_thread.start()
+
                 except Exception as e:
                     self.logger.error(
                         f"Failed to reinitialize Syncthing client: {e}", exc_info=True
@@ -598,10 +691,6 @@ class PowerMonitorApp:
         else:
             self.syncthing_client = None
             self.logger.info("Syncthing integration disabled")
-
-        # Update menu to reflect Syncthing changes
-        if self.icon:
-            self.icon.menu = self._create_tray_menu()
 
         # Restart monitoring if it was running to apply new interval
         if not self.monitor.stop_event.is_set():

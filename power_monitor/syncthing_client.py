@@ -43,7 +43,7 @@ class SyncthingClient:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = 5  # seconds
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # Use RLock to allow reentrant locking
         self._device_id: Optional[str] = None
         self.logger = logging.getLogger(__name__)
 
