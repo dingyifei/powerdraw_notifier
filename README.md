@@ -294,11 +294,12 @@ Power Monitor can integrate with [Syncthing](https://syncthing.net/) to give you
     - **Manual Resume**: Keeps syncing even on battery until next AC plug-in
     - **AC Plug-in**: Resets to default auto-pause behavior
 
-- **Status Indicators**:
+- **Status Indicators** (auto-updates every 2 seconds):
   - **"Syncthing: Syncing"** - Normal syncing (on AC or manually resumed)
   - **"Syncthing: Paused (Auto)"** - Auto-paused on battery
   - **"Syncthing: Paused (Manual)"** - User manually paused
   - **"Syncthing: Syncing (Manual)"** - User manually resumed on battery
+  - **"Syncthing: Unknown"** - Unable to connect to Syncthing API
 
 #### Setup
 

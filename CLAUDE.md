@@ -227,7 +227,7 @@ powerdraw_notifier/
 
 #### 8. **SyncthingClient** (syncthing_client.py)
 - REST API client for Syncthing integration
-- Thread-safe operations with automatic error handling
+- Thread-safe operations with automatic error handling using RLock (reentrant lock)
 - Methods:
   - `get_device_id()` - Retrieve local device ID
   - `is_paused()` - Check current pause state
@@ -238,11 +238,12 @@ powerdraw_notifier/
 - Uses requests library with 5-second timeout
 - Custom exceptions: `SyncthingError`, `SyncthingConnectionError`, `SyncthingAPIError`
 - Connects to localhost:8384 by default
+- Uses threading.RLock() instead of Lock() to allow nested method calls without deadlock
 
 **Battery-Aware Auto-Pause Feature:**
 - Automatically pauses Syncthing when running on battery power
 - Automatically resumes Syncthing when AC power is connected
-- Checks power state every monitoring interval (~30 seconds)
+- Checks power state every monitoring interval (~5 seconds by default)
 - Manual override support:
   - Manual pause: Stays paused until next AC plug-in
   - Manual resume: Keeps syncing even on battery until next AC plug-in
@@ -250,11 +251,20 @@ powerdraw_notifier/
 - Menu displays pause reason: "Syncing", "Paused (Auto)", "Paused (Manual)", "Syncing (Manual)"
 - Feature can be enabled/disabled via `syncthing_auto_pause_on_battery` setting
 
+**Background Cache Updater:**
+- Dedicated daemon thread updates Syncthing state cache every 2 seconds
+- Non-blocking status checks using cached values (prevents UI freezing)
+- Automatically calls `icon.update_menu()` to refresh tray menu on Windows
+- Cache includes: pause state, availability, and last update timestamp
+
 #### 9. **Main Application** (main.py)
 - System tray icon with pystray
 - Menu: Stats, Plots, Syncthing (optional), Settings, Logs, About, Quit
 - Dynamic icon switching (normal ↔ alert)
 - Dynamic Syncthing menu item showing current status (with auto/manual indicators)
+  - Uses callable menu text for dynamic updates
+  - Calls `icon.update_menu()` after cache updates to force refresh (required on Windows)
+  - Auto-refreshes every 2 seconds with latest Syncthing state
 - Graceful shutdown handling
 - Signal handlers for SIGINT/SIGTERM
 - Battery-aware Syncthing auto-pause/resume logic in monitoring loop
@@ -265,7 +275,7 @@ All settings are stored in `config.json`:
 
 | Setting | Type | Default | Range | Description |
 |---------|------|---------|-------|-------------|
-| `monitoring_interval_seconds` | int | 30 | 5-300 | Time between metric collections |
+| `monitoring_interval_seconds` | int | 5 | 5-300 | Time between metric collections (5s = 6 samples/30s) |
 | `high_power_threshold_percent_per_10min` | float | 2.0 | 0.1-50.0 | Power draw threshold (% per 10 min) |
 | `low_battery_warning_percent` | int | 20 | 5-50 | Low battery notification threshold |
 | `critical_battery_percent` | int | 10 | 1-20 | Critical battery notification threshold |
@@ -321,12 +331,41 @@ CREATE TABLE high_power_events (
 - Matplotlib uses 'Agg' backend for non-GUI operation
 
 ### Power Draw Calculation
+
+The application uses an improved sliding window approach for accurate power draw estimation:
+
+**Primary Method (Historical Sliding Window):**
+- Uses last 3-7 database records (15-35 seconds of data at 5-second intervals)
+- Calculates delta between oldest and newest points for larger, more accurate measurements
+- Applies exponential smoothing (70% previous, 30% new) to reduce volatility
+- Validates results to reject impossible values (negative draw, >100%/hour)
+- Requires minimum 10 seconds of battery-only data
+
+**Fallback Method (Simple Calculation):**
+- Used when insufficient historical data exists (startup, plug/unplug events)
+- Compares current battery to previous single measurement
+- Includes same validation and capping logic
+
 ```python
-# Formula:
-power_draw = (battery_prev - battery_now) / hours_elapsed
-# Returns: percentage per hour
-# Only calculated when on battery power (not plugged in)
+# Sliding window formula (primary):
+battery_change = oldest_battery - newest_battery
+time_delta = newest_timestamp - oldest_timestamp
+raw_power_draw = battery_change / (time_delta / 3600.0)  # Convert to %/hour
+smoothed_draw = 0.3 * raw_power_draw + 0.7 * previous_estimate
+
+# Validation:
+# - Rejects values < -1.0 %/hour (battery increasing while unplugged)
+# - Caps values > 100.0 %/hour (unrealistically high)
+# - Returns 0.0 when plugged in or insufficient data
+
+# Returns: percentage per hour (smoothed and validated)
 ```
+
+**Benefits over simple calculation:**
+- More stable readings (less noise from battery percentage rounding)
+- Faster response to actual power draw changes
+- Filters out measurement artifacts
+- Better suited for threshold-based alerting
 
 ### High DPI Display Support
 The application automatically detects and configures for high DPI displays on Windows:

@@ -274,12 +274,20 @@ class PowerMonitorApp:
 
             self.logger.debug(f"Syncthing state updated: paused={is_paused}")
 
+            # Force menu refresh on Windows (pystray doesn't auto-update dynamic items)
+            if self.icon:
+                self.icon.update_menu()
+
         except Exception as e:
             # Mark as unavailable on error
             with self.syncthing_cache_lock:
                 self.syncthing_state_cache["is_available"] = False
                 self.syncthing_state_cache["last_updated"] = time.time()
             self.logger.debug(f"Syncthing state update failed: {e}")
+
+            # Force menu refresh to show "Unknown" status
+            if self.icon:
+                self.icon.update_menu()
 
     def _syncthing_cache_updater_loop(self):
         """Background thread loop to update Syncthing state cache."""
@@ -548,6 +556,7 @@ class PowerMonitorApp:
             Menu text string
         """
         if not self.syncthing_client:
+            self.logger.debug("Menu text: Unknown (no client)")
             return "Syncthing: Unknown"
 
         # Read from cache (instant, no network calls)
@@ -555,19 +564,28 @@ class PowerMonitorApp:
             is_paused = self.syncthing_state_cache["is_paused"]
             is_available = self.syncthing_state_cache["is_available"]
 
+        self.logger.debug(
+            f"Menu text requested: is_paused={is_paused}, is_available={is_available}"
+        )
+
         # If we haven't checked yet or Syncthing is unavailable
         if is_paused is None or not is_available:
+            self.logger.debug("Menu text returning: Unknown")
             return "Syncthing: Unknown"
 
         if is_paused:
             # Determine if paused manually or automatically
             if self.syncthing_manual_override == "pause":
+                self.logger.debug("Menu text returning: Paused (Manual)")
                 return "Syncthing: Paused (Manual)"
+            self.logger.debug("Menu text returning: Paused (Auto)")
             return "Syncthing: Paused (Auto)"
 
         # Syncing - check if manually resumed on battery
         if self.syncthing_manual_override == "resume":
+            self.logger.debug("Menu text returning: Syncing (Manual)")
             return "Syncthing: Syncing (Manual)"
+        self.logger.debug("Menu text returning: Syncing")
         return "Syncthing: Syncing"
 
     def _on_toggle_syncthing(self, icon, item):
