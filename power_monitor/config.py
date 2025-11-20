@@ -14,7 +14,7 @@ class ConfigManager:
     """Thread-safe configuration manager."""
 
     DEFAULT_CONFIG = {
-        "monitoring_interval_seconds": 30,
+        "monitoring_interval_seconds": 5,
         "high_power_threshold_percent_per_10min": 2.0,
         "low_battery_warning_percent": 20,
         "critical_battery_percent": 10,
@@ -27,6 +27,7 @@ class ConfigManager:
         "syncthing_enabled": False,
         "syncthing_api_key": "",
         "syncthing_auto_pause_on_battery": True,
+        "syncthing_check_interval_seconds": 2,
     }
 
     VALID_LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -159,6 +160,14 @@ class ConfigManager:
         if not isinstance(config.get("syncthing_auto_pause_on_battery"), bool):
             config["syncthing_auto_pause_on_battery"] = True
 
+        # Validate Syncthing check interval
+        if not isinstance(config.get("syncthing_check_interval_seconds"), (int, float)):
+            config["syncthing_check_interval_seconds"] = 2
+        else:
+            config["syncthing_check_interval_seconds"] = max(
+                1, min(60, config["syncthing_check_interval_seconds"])
+            )
+
         return config
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -234,21 +243,25 @@ class ConfigManager:
         Returns:
             True if successful, False otherwise
         """
+        # Copy config while holding lock (fast operation)
         with self.lock:
-            try:
-                # Ensure parent directory exists
-                self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_copy = self.config.copy()
 
-                # Write config to file with nice formatting
-                with open(self.config_path, "w") as f:
-                    json.dump(self.config, f, indent=2)
+        # Perform file I/O without holding lock (prevents blocking other threads)
+        try:
+            # Ensure parent directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-                print(f"Configuration saved to {self.config_path}")
-                return True
+            # Write config to file with nice formatting
+            with open(self.config_path, "w") as f:
+                json.dump(config_copy, f, indent=2)
 
-            except Exception as e:
-                print(f"Error saving configuration: {e}")
-                return False
+            print(f"Configuration saved to {self.config_path}")
+            return True
+
+        except Exception as e:
+            print(f"Error saving configuration: {e}")
+            return False
 
     def reset_to_defaults(self) -> bool:
         """

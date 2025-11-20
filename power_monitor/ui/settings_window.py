@@ -5,6 +5,7 @@ Provides a tkinter-based UI for configuring all application settings.
 """
 
 import logging
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
@@ -243,6 +244,15 @@ class SettingsWindow(tk.Toplevel):
             "Auto-pause on battery:",
             "syncthing_auto_pause_on_battery",
             "Automatically pause Syncthing when on battery power. Manual controls override until AC plug-in.",
+        )
+
+        # Syncthing check interval
+        row = self._add_entry_field(
+            scrollable_frame,
+            row,
+            "Syncthing Check Interval (sec):",
+            "syncthing_check_interval_seconds",
+            "How often to check and enforce Syncthing state (1-60 seconds)",
         )
 
         # Test Connection Button
@@ -572,6 +582,14 @@ class SettingsWindow(tk.Toplevel):
             if log_level not in self.config_manager.VALID_LOG_LEVELS:
                 return False, f"Invalid log level: {log_level}"
 
+            # Syncthing Check Interval
+            try:
+                check_interval = float(self.widgets["syncthing_check_interval_seconds"].get())
+                if not (1 <= check_interval <= 60):
+                    return False, "Syncthing check interval must be between 1 and 60 seconds"
+            except ValueError:
+                return False, "Syncthing check interval must be a valid number"
+
             return True, None
 
         except Exception as e:
@@ -618,6 +636,9 @@ class SettingsWindow(tk.Toplevel):
         values["syncthing_auto_pause_on_battery"] = self.widgets[
             "syncthing_auto_pause_on_battery"
         ].get()
+        values["syncthing_check_interval_seconds"] = float(
+            self.widgets["syncthing_check_interval_seconds"].get()
+        )
 
         return values
 
@@ -640,12 +661,16 @@ class SettingsWindow(tk.Toplevel):
                 if self.config_manager.save():
                     logger.info("Configuration saved successfully")
 
-                    # Call callback if provided
+                    # Call callback if provided (in background thread to prevent GUI freeze)
                     if self.on_save_callback:
-                        try:
-                            self.on_save_callback()
-                        except Exception as e:
-                            logger.error(f"Error in save callback: {e}")
+                        def run_callback():
+                            try:
+                                self.on_save_callback()
+                            except Exception as e:
+                                logger.error(f"Error in save callback: {e}")
+
+                        callback_thread = threading.Thread(target=run_callback, daemon=True)
+                        callback_thread.start()
 
                     # Show success message
                     messagebox.showinfo("Success", "Settings saved successfully!")

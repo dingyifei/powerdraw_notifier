@@ -111,7 +111,12 @@ class SyncthingClient:
                     if not self._device_id:
                         raise SyncthingAPIError("Could not retrieve device ID")
                     self.logger.debug(f"Retrieved device ID: {self._device_id}")
+                except SyncthingConnectionError as e:
+                    # Connection errors are expected (e.g., after hibernation) - log at warning level
+                    self.logger.warning(f"Failed to get device ID: {e}")
+                    raise
                 except Exception as e:
+                    # Unexpected errors should be logged with full traceback
                     self.logger.error(f"Failed to get device ID: {e}", exc_info=True)
                     raise
             return self._device_id
@@ -143,7 +148,12 @@ class SyncthingClient:
                 # If device not found in config, assume not paused
                 self.logger.warning("Local device not found in config, assuming not paused")
                 return False
+            except SyncthingConnectionError as e:
+                # Connection errors are expected (e.g., after hibernation) - log at debug level
+                self.logger.debug(f"Failed to check pause state: {e}")
+                raise
             except Exception as e:
+                # Unexpected errors should be logged with full traceback
                 self.logger.error(f"Failed to check pause state: {e}", exc_info=True)
                 raise
 
@@ -160,7 +170,12 @@ class SyncthingClient:
                 device_id = self.get_device_id()
                 self._make_request("POST", "/rest/system/pause", json={"device": device_id})
                 self.logger.info("Paused Syncthing sync for local device")
+            except SyncthingConnectionError as e:
+                # Connection errors are expected (e.g., after hibernation) - log at debug level
+                self.logger.debug(f"Failed to pause device: {e}")
+                raise
             except Exception as e:
+                # Unexpected errors should be logged with full traceback
                 self.logger.error(f"Failed to pause device: {e}", exc_info=True)
                 raise
 
@@ -177,7 +192,12 @@ class SyncthingClient:
                 device_id = self.get_device_id()
                 self._make_request("POST", "/rest/system/resume", json={"device": device_id})
                 self.logger.info("Resumed Syncthing sync for local device")
+            except SyncthingConnectionError as e:
+                # Connection errors are expected (e.g., after hibernation) - log at debug level
+                self.logger.debug(f"Failed to resume device: {e}")
+                raise
             except Exception as e:
+                # Unexpected errors should be logged with full traceback
                 self.logger.error(f"Failed to resume device: {e}", exc_info=True)
                 raise
 

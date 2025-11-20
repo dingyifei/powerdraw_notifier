@@ -255,8 +255,52 @@ class PowerMonitorApp:
         except Exception as e:
             self.logger.error(f"Error updating tray icon: {e}", exc_info=True)
 
+    def _get_desired_syncthing_state(self) -> Optional[bool]:
+        """
+        Determine the desired Syncthing pause state based on power and override settings.
+
+        Returns:
+            True if should be paused, False if should be syncing, None if no enforcement needed
+        """
+        # Skip if auto-pause feature is disabled
+        if not self.config.get("syncthing_auto_pause_on_battery", True):
+            return None
+
+        # Get current metrics to check power state
+        metrics = self.monitor.get_cached_stats(max_age_seconds=10)
+        if not metrics:
+            return None
+
+        power_plugged = metrics.get("power_plugged", 1)
+
+        # On AC power: should be syncing (unless manually paused)
+        if power_plugged:
+            # Clear manual override when on AC (reset to auto behavior)
+            if self.syncthing_manual_override and self.syncthing_last_power_state == 0:
+                self.logger.info("AC power detected - resetting to auto mode")
+                self.syncthing_manual_override = None
+
+            # Update tracked power state
+            self.syncthing_last_power_state = power_plugged
+
+            # Should be syncing on AC (not paused)
+            return False
+
+        # On battery power: check manual override
+        # Update tracked power state
+        self.syncthing_last_power_state = power_plugged
+
+        if self.syncthing_manual_override == "resume":
+            # User manually resumed on battery - should keep syncing
+            return False
+        if self.syncthing_manual_override == "pause":
+            # User manually paused - should stay paused
+            return True
+        # Auto mode on battery - should be paused
+        return True
+
     def _update_syncthing_state_cache(self):
-        """Update cached Syncthing state (non-blocking for callers)."""
+        """Update cached Syncthing state and enforce desired state (non-blocking for callers)."""
         if not self.syncthing_client:
             self.logger.debug("Syncthing cache update skipped: no client")
             return
@@ -273,6 +317,26 @@ class PowerMonitorApp:
                 self.syncthing_state_cache["is_available"] = True
 
             self.logger.debug(f"Syncthing state updated: paused={is_paused}")
+
+            # Determine desired state
+            desired_paused = self._get_desired_syncthing_state()
+
+            # Enforce state if needed
+            if desired_paused is not None and is_paused != desired_paused:
+                if desired_paused:
+                    # Should be paused but currently syncing
+                    self.syncthing_client.pause_device()
+                    reason = "Manual" if self.syncthing_manual_override == "pause" else "Auto"
+                    self.logger.info(f"Syncthing paused ({reason})")
+                else:
+                    # Should be syncing but currently paused
+                    self.syncthing_client.resume_device()
+                    reason = "Manual" if self.syncthing_manual_override == "resume" else "Auto"
+                    self.logger.info(f"Syncthing resumed ({reason})")
+
+                # Update cache with new state
+                with self.syncthing_cache_lock:
+                    self.syncthing_state_cache["is_paused"] = desired_paused
 
             # Force menu refresh on Windows (pystray doesn't auto-update dynamic items)
             if self.icon:
@@ -299,88 +363,11 @@ class PowerMonitorApp:
             except Exception as e:
                 self.logger.error(f"Error in Syncthing cache updater: {e}", exc_info=True)
 
-            # Wait 2 seconds before next update (or until shutdown)
-            self.shutdown_event.wait(2.0)
+            # Wait before next update (or until shutdown)
+            interval = self.config.get("syncthing_check_interval_seconds", 2)
+            self.shutdown_event.wait(interval)
 
         self.logger.info("Syncthing cache updater thread stopped")
-
-    def _handle_syncthing_auto_pause(self, battery_percent: Optional[float], power_plugged: int):
-        """
-        Handle automatic Syncthing pause/resume based on battery status.
-
-        Args:
-            battery_percent: Current battery percentage (None if no battery)
-            power_plugged: 1 if plugged in, 0 if on battery
-        """
-        # Skip if Syncthing not enabled or client not initialized
-        if not self.syncthing_client:
-            return
-
-        # Skip if auto-pause feature is disabled
-        if not self.config.get("syncthing_auto_pause_on_battery", True):
-            return
-
-        try:
-            # Get cached pause state (non-blocking)
-            with self.syncthing_cache_lock:
-                cached_is_paused = self.syncthing_state_cache["is_paused"]
-                is_available = self.syncthing_state_cache["is_available"]
-
-            # Skip if we don't have valid cache data yet
-            if cached_is_paused is None or not is_available:
-                return
-
-            # Detect power state transition
-            power_state_changed = (
-                self.syncthing_last_power_state is not None
-                and self.syncthing_last_power_state != power_plugged
-            )
-
-            # On AC power (plugged in)
-            if power_plugged:
-                # If transitioning from battery to AC
-                if power_state_changed and self.syncthing_last_power_state == 0:
-                    self.logger.info("Power plugged in - resetting Syncthing to default behavior")
-
-                    # Clear manual override when plugging in
-                    self.syncthing_manual_override = None
-
-                    # Resume Syncthing if currently paused
-                    if cached_is_paused:
-                        self.syncthing_client.resume_device()
-                        self.logger.info("Syncthing auto-resumed on AC power")
-                        # Trigger immediate cache update after state change
-                        threading.Thread(
-                            target=self._update_syncthing_state_cache, daemon=True
-                        ).start()
-
-            # On battery power (unplugged)
-            else:
-                # Check if we should auto-pause
-                should_auto_pause = (
-                    power_state_changed  # Just transitioned to battery
-                    and self.syncthing_manual_override != "resume"  # User hasn't manually resumed
-                )
-
-                if should_auto_pause and not cached_is_paused:
-                    # Pause Syncthing if currently syncing
-                    self.syncthing_client.pause_device()
-                    battery_str = f"{battery_percent:.0f}%" if battery_percent else "unknown"
-                    self.logger.info(
-                        f"Syncthing auto-paused on battery power (battery: {battery_str})"
-                    )
-                    # Trigger immediate cache update after state change
-                    threading.Thread(
-                        target=self._update_syncthing_state_cache, daemon=True
-                    ).start()
-
-            # Update tracked power state
-            self.syncthing_last_power_state = power_plugged
-
-        except SyncthingError as e:
-            self.logger.error(f"Syncthing auto-pause error: {e}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error in Syncthing auto-pause: {e}", exc_info=True)
 
     def _check_high_power_draw(self):
         """Periodically check for high power draw and update icon."""
@@ -480,9 +467,6 @@ class PowerMonitorApp:
                             "enable_notifications", True
                         ):
                             self.notifier.notify_low_battery(battery_percent)
-
-                    # Handle Syncthing auto-pause based on power state
-                    self._handle_syncthing_auto_pause(battery_percent, power_plugged)
 
             except Exception as e:
                 self.logger.error(f"Error in high power check: {e}", exc_info=True)
