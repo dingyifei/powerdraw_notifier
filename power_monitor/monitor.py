@@ -250,7 +250,10 @@ class PowerMonitor:
         self, current_time: float, current_metrics: Dict, previous_metrics: Dict
     ) -> float:
         """
-        Calculate power draw estimate based on battery percentage change.
+        Calculate power draw estimate using sliding window average.
+
+        Uses historical data from the last 5-10 minutes to calculate a more accurate
+        and stable power draw estimate. Falls back to simple calculation if insufficient data.
 
         Args:
             current_time: Current timestamp
@@ -265,8 +268,129 @@ class PowerMonitor:
             if current_metrics.get("power_plugged", 0) == 1:
                 return 0.0
 
-            battery_now = current_metrics.get("battery_percent", 0)
-            battery_prev = previous_metrics.get("battery_percent", 0)
+            battery_now = current_metrics.get("battery_percent")
+            if battery_now is None:
+                return 0.0
+
+            # Try to use historical data for better accuracy
+            power_draw = self._calculate_power_draw_from_history(battery_now, current_time)
+
+            if power_draw is not None:
+                return power_draw
+
+            # Fallback to simple calculation if no historical data
+            return self._calculate_power_draw_simple(current_time, battery_now, previous_metrics)
+
+        except Exception as e:
+            self.logger.warning(f"Error calculating power draw: {e}")
+            return 0.0
+
+    def _calculate_power_draw_from_history(
+        self, current_battery: float, current_time: float
+    ) -> Optional[float]:
+        """
+        Calculate power draw using historical database records.
+
+        Uses a sliding window of 15-30 seconds (3-6 samples at 5-second intervals)
+        for more stable estimates.
+
+        Args:
+            current_battery: Current battery percentage
+            current_time: Current timestamp
+
+        Returns:
+            Power draw estimate in percent per hour, or None if insufficient data
+        """
+        try:
+            # Get last 7 records (35 seconds max at 5-second intervals)
+            # This gives us 3-6 usable samples for calculation
+            recent_metrics = self.database.get_latest_metrics(count=7)
+
+            if not recent_metrics or len(recent_metrics) < 3:
+                # Need at least 3 data points for reliable calculation
+                return None
+
+            # Filter for records on battery (not plugged in)
+            battery_records = [
+                m
+                for m in recent_metrics
+                if m.get("power_plugged") == 0 and m.get("battery_percent") is not None
+            ]
+
+            if len(battery_records) < 3:
+                return None
+
+            # Sort by timestamp (oldest first)
+            battery_records.sort(key=lambda x: x["timestamp"])
+
+            # Use oldest and newest points for maximum delta (more accurate)
+            oldest = battery_records[0]
+            newest = battery_records[-1]
+
+            # Calculate time difference
+            time_delta = newest["timestamp"] - oldest["timestamp"]
+
+            if time_delta < 10:  # Need at least 10 seconds of data (2+ samples)
+                return None
+
+            # Calculate battery change
+            battery_change = oldest["battery_percent"] - newest["battery_percent"]
+            hours_elapsed = time_delta / 3600.0
+
+            # Calculate raw power draw
+            raw_power_draw = battery_change / hours_elapsed if hours_elapsed > 0 else 0.0
+
+            # Validate: power draw should be positive (battery draining) and reasonable
+            if raw_power_draw < -1.0:  # Battery increased while unplugged (impossible)
+                self.logger.debug(
+                    f"Invalid power draw detected: {raw_power_draw:.2f}%/h (battery increased)"
+                )
+                return 0.0
+
+            if raw_power_draw > 100.0:  # Unrealistically high drain
+                self.logger.debug(
+                    f"Unrealistic power draw detected: {raw_power_draw:.2f}%/h (capped at 100)"
+                )
+                return 100.0
+
+            # Apply exponential smoothing if we have previous estimate
+            smoothing_factor = 0.3  # Weight for new value (0.3 = 70% old, 30% new)
+            if hasattr(self, "_last_power_draw") and self._last_power_draw is not None:
+                smoothed_draw = (
+                    smoothing_factor * raw_power_draw
+                    + (1 - smoothing_factor) * self._last_power_draw
+                )
+            else:
+                smoothed_draw = raw_power_draw
+
+            # Store for next smoothing iteration
+            self._last_power_draw = smoothed_draw
+
+            return round(max(0.0, smoothed_draw), 3)
+
+        except Exception as e:
+            self.logger.debug(f"Could not calculate power draw from history: {e}")
+            return None
+
+    def _calculate_power_draw_simple(
+        self, current_time: float, battery_now: float, previous_metrics: Dict
+    ) -> float:
+        """
+        Simple fallback power draw calculation using only previous measurement.
+
+        Args:
+            current_time: Current timestamp
+            battery_now: Current battery percentage
+            previous_metrics: Previous metrics
+
+        Returns:
+            Power draw estimate in percent per hour
+        """
+        try:
+            battery_prev = previous_metrics.get("battery_percent")
+
+            if battery_prev is None:
+                return 0.0
 
             time_delta = current_time - (self.previous_time or current_time)
 
@@ -279,12 +403,19 @@ class PowerMonitor:
 
             if hours_elapsed > 0:
                 power_draw = battery_change / hours_elapsed
-                return round(power_draw, 3)
+
+                # Validate and cap
+                if power_draw < -1.0:
+                    return 0.0
+                if power_draw > 100.0:
+                    return 100.0
+
+                return round(max(0.0, power_draw), 3)
 
             return 0.0
 
         except Exception as e:
-            self.logger.warning(f"Error calculating power draw: {e}")
+            self.logger.warning(f"Error in simple power draw calculation: {e}")
             return 0.0
 
     def _get_disk_io_rates(self, current_time: float) -> Optional[Dict]:

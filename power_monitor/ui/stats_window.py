@@ -155,9 +155,17 @@ class StatsWindow(tk.Toplevel):
         self.last_updated_label.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
         row += 1
 
+        # Button frame for Refresh and Close buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=row, column=0, columnspan=2, pady=(10, 0))
+
+        # Refresh button
+        refresh_button = ttk.Button(button_frame, text="Refresh", command=self._manual_refresh)
+        refresh_button.grid(row=0, column=0, padx=(0, 5))
+
         # Close button
-        close_button = ttk.Button(main_frame, text="Close", command=self._on_close)
-        close_button.grid(row=row, column=0, columnspan=2, pady=(10, 0))
+        close_button = ttk.Button(button_frame, text="Close", command=self._on_close)
+        close_button.grid(row=0, column=1, padx=(5, 0))
 
     def _refresh_stats(self):
         """Refresh statistics display."""
@@ -270,6 +278,18 @@ class StatsWindow(tk.Toplevel):
 
         now = datetime.datetime.now().strftime("%H:%M:%S")
         self.last_updated_label.config(text=f"Last updated: {now} (Error)")
+
+    def _manual_refresh(self):
+        """Handle manual refresh button click."""
+        self.logger.debug("Manual refresh triggered")
+
+        # Cancel any pending auto-refresh
+        if self.refresh_job:
+            self.after_cancel(self.refresh_job)
+            self.refresh_job = None
+
+        # Perform immediate refresh (this will also reschedule the next auto-refresh)
+        self._refresh_stats()
 
     def _on_close(self):
         """Handle window close event."""
